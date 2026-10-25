@@ -80,6 +80,17 @@ def test_settings_errors_name_every_bad_variable_without_secrets(monkeypatch):
     assert "s3cr3t-value" not in msg
 
 
+def test_settings_empty_env_names_token_too(monkeypatch):
+    _env(monkeypatch)
+    with pytest.raises(SettingsError) as ei:
+        load_settings(WebhookSettings)
+    assert set(ei.value.problems) == {
+        "WEBHOOK_DATABASE_URL",
+        "WEBHOOK_ORCHESTRATOR_URL",
+        "WEBHOOK_ORCHESTRATOR_TOKEN",
+    }
+
+
 def test_settings_missing_token_file_is_named(monkeypatch, tmp_path):
     _env(
         monkeypatch,

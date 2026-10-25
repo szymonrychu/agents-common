@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -77,4 +78,17 @@ def load_settings[S: BaseServiceSettings](cls: type[S]) -> S:
             msg = "required" if err["type"] == "missing" else msg
             name = f"{prefix}{str(loc[0]).upper()}" if loc else f"{prefix}*"
             problems.setdefault(name, msg)
+        # the after-validator never runs while a field is invalid; check the token here too
+        token = os.environ.get(f"{prefix}ORCHESTRATOR_TOKEN", "")
+        path = os.environ.get(f"{prefix}ORCHESTRATOR_TOKEN_FILE", "")
+        if path:
+            try:
+                token = Path(path).read_text().strip()
+            except OSError as e:
+                problems.setdefault(
+                    f"{prefix}ORCHESTRATOR_TOKEN_FILE", f"cannot read: {e.strerror}"
+                )
+                token = "x"
+        if not token:
+            problems.setdefault(f"{prefix}ORCHESTRATOR_TOKEN", "required")
         raise SettingsError(problems) from None
