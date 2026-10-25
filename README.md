@@ -44,7 +44,9 @@ Public names: `advisory_singleton`, `run_service`, `lock_key`, `LostLock`.
 ## `orchestrator`
 
 Public names: `OrchestratorClient`, `Preset`, `Cluster`, `Turn`, `Message`,
-`OrchestratorError`, `NotFound`, `OrchestratorUnavailable`.
+`OrchestratorError`, `NotFound`, `OrchestratorUnavailable`. `Preset.spec` is the sparse preset
+spec and `Preset.reuse_running_agent` its optional agent-reuse flag; `Cluster.status` is the
+cluster status document.
 
     from agents_common.orchestrator import OrchestratorClient
 
@@ -55,6 +57,9 @@ Public names: `OrchestratorClient`, `Preset`, `Cluster`, `Turn`, `Message`,
 ## `fake_orchestrator`
 
 Public names: `FakeOrchestrator` (an in-process ASGI app speaking the orchestrator API).
+Helpers: `add_preset(name, is_default=False, spec=None)`, `mark_sent(message_id)`,
+`discard_cluster(cluster_id)` (desired `deleting`, queued messages cancelled, posts answer 409),
+`remove_cluster(cluster_id)` (404).
 
     from agents_common.fake_orchestrator import FakeOrchestrator
 
@@ -63,13 +68,21 @@ Public names: `FakeOrchestrator` (an in-process ASGI app speaking the orchestrat
 
 ## `runs`
 
-Public names: `dispatch`, `post_update`, `track`, `marker`, `RunRef`, `RunStore`,
+Public names: `dispatch`, `post_update`, `running_cluster`, `deliver`, `track_delivery`,
+`track`, `marker`, `RunRef`, `RunStore`,
 `PresetBinding`, `RunStatus`, `RunId`.
 
     from agents_common.runs import dispatch, marker
 
     run = await dispatch(client, store, run, text, marker("webhook", run.id))
     # safe to call again after a crash: no second cluster, no second message
+
+Agent reuse: `running_cluster(client, cluster_id)` returns the cluster only while it exists with
+desired `active`. `deliver(...)` posts like `post_update` but returns None (run left open) when
+the cluster is gone, so the caller can create a new one. `track_delivery(client, store, run,
+timeout_seconds=...)` returns "handled" (message sent, run finished), "gone" (message cancelled,
+failed or missing, run left open), or None (still pending; past the timeout the run is finished
+failed with `timeout`).
 
 ## `testing`
 

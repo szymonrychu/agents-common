@@ -10,10 +10,15 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal, Protocol, runtime_checkable
 
-from agents_common.orchestrator import NotFound, OrchestratorClient
+from agents_common.orchestrator import (
+    Cluster,
+    NotFound,
+    OrchestratorClient,
+    OrchestratorError,
+)
 
 RunStatus = Literal["handled", "failed"]
 RunId = int | str
@@ -90,6 +95,44 @@ async def post_update(
     return await _post_once(client, store, run, cluster_id, text, marker)
 
 
+async def running_cluster(client: OrchestratorClient, cluster_id: str) -> Cluster | None:
+    """The cluster while it exists with desired `active`; None when gone or being deleted.
+
+    OrchestratorUnavailable propagates.
+    """
+    try:
+        cluster = await client.get_cluster(cluster_id)
+    except NotFound:
+        return None
+    return cluster if cluster.desired == "active" else None
+
+
+async def deliver(
+    client: OrchestratorClient,
+    store: RunStore,
+    run: RunRef,
+    cluster_id: str,
+    text: str,
+    marker: str,
+) -> RunRef | None:
+    """Like `post_update`, but a gone cluster returns None and leaves the run open.
+
+    Gone means 404 `not_found`, or 409 / 410 on the post (cluster being deleted); the caller
+    then falls back to a new cluster.
+    """
+    if run.cluster_id is None:
+        await store.set_cluster(run.id, cluster_id)
+        run = dataclasses.replace(run, cluster_id=cluster_id)
+    try:
+        return await _post_once(client, store, run, cluster_id, text, marker, fail_run=False)
+    except NotFound:
+        return None
+    except OrchestratorError as exc:
+        if exc.status in (409, 410):
+            return None
+        raise
+
+
 async def _post_once(
     client: OrchestratorClient,
     store: RunStore,
@@ -97,6 +140,8 @@ async def _post_once(
     cluster_id: str,
     text: str,
     marker: str,
+    *,
+    fail_run: bool = True,
 ) -> RunRef:
     if run.message_id is not None:
         return run
@@ -105,7 +150,8 @@ async def _post_once(
         adopted = next((m for m in existing if m.text and marker in m.text), None)
         message = adopted or await client.post_message(cluster_id, f"{text}\n\n{marker}")
     except NotFound:
-        await store.finish(run.id, "failed", "cluster_not_found")
+        if fail_run:
+            await store.finish(run.id, "failed", "cluster_not_found")
         raise
     message_id = str(message.id)
     await store.set_message(run.id, message_id)
@@ -139,6 +185,37 @@ async def track(
         return await _finish(store, run, "failed", "turn_failed")
     if (now - run.started_at).total_seconds() > timeout_seconds:
         return await _finish(store, run, "failed", "timeout")
+    return None
+
+
+async def track_delivery(
+    client: OrchestratorClient,
+    store: RunStore,
+    run: RunRef,
+    *,
+    timeout_seconds: float,
+    now: datetime | None = None,
+) -> Literal["handled", "gone"] | None:
+    """Poll a delivered message once.
+
+    `sent` finishes the run handled; cancelled, failed or a missing message returns "gone"
+    without finishing so the caller can fall back; past the timeout the run is finished
+    failed (`timeout`); still queued or dispatching returns None.
+    """
+    if run.message_id is None:
+        raise ValueError(f"run {run.id} has no message to track")
+    try:
+        message = await client.get_message(int(run.message_id))
+    except NotFound:
+        return "gone"
+    if message.status == "sent":
+        await store.finish(run.id, "handled", None)
+        return "handled"
+    if message.status in ("cancelled", "failed"):
+        return "gone"
+    now = now or datetime.now(UTC)
+    if (now - run.started_at).total_seconds() > timeout_seconds:
+        await store.finish(run.id, "failed", "timeout")
     return None
 
 

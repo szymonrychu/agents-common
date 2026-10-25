@@ -52,17 +52,35 @@ class FakeOrchestrator:
 
     # helpers -------------------------------------------------------------
 
-    def add_preset(self, name: str, is_default: bool = False) -> _PresetRef:
+    def add_preset(
+        self, name: str, is_default: bool = False, spec: dict[str, Any] | None = None
+    ) -> _PresetRef:
         pid = str(uuid.uuid4())
         self.presets[pid] = {
             "id": pid,
             "name": name,
             "is_default": is_default,
-            "spec": {},
+            "spec": dict(spec or {}),
             "created_at": _now(),
             "updated_at": _now(),
         }
         return _PresetRef(uuid.UUID(pid), name)
+
+    def mark_sent(self, message_id: int) -> None:
+        self.messages[message_id]["status"] = "sent"
+
+    def discard_cluster(self, cluster_id: str) -> None:
+        """Start deleting: desired becomes `deleting`, queued messages are cancelled."""
+        self.clusters[str(cluster_id)]["desired"] = "deleting"
+        for msg in self.messages.values():
+            if msg["cluster_id"] == str(cluster_id) and msg["status"] == "queued":
+                msg["status"] = "cancelled"
+
+    def remove_cluster(self, cluster_id: str) -> None:
+        """The cluster row is gone: it and its messages answer 404."""
+        cid = str(cluster_id)
+        del self.clusters[cid]
+        self.messages = {i: m for i, m in self.messages.items() if m["cluster_id"] != cid}
 
     def complete_turn(self, message_id: int, final_text: str) -> None:
         msg = self.messages[message_id]
@@ -148,6 +166,8 @@ class FakeOrchestrator:
             return _error(404, "not_found", "cluster not found")
         if request.method == "GET":
             return JSONResponse([m for m in self.messages.values() if m["cluster_id"] == cid])
+        if self.clusters[cid]["desired"] == "deleting":
+            return _error(409, "conflict", "cluster is being deleted")
         body = await request.json()
         mid = self._next_message_id
         self._next_message_id += 1
