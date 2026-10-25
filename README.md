@@ -43,23 +43,30 @@ Public names: `advisory_singleton`, `run_service`, `lock_key`, `LostLock`.
 
 ## `orchestrator`
 
-Public names: `OrchestratorClient`, `Preset`, `Cluster`, `Turn`, `Message`,
-`OrchestratorError`, `NotFound`, `OrchestratorUnavailable`. `Preset.spec` is the sparse preset
-spec and `Preset.reuse_running_agent` its optional agent-reuse flag; `Cluster.status` is the
-cluster status document.
+Client of the agents-orchestrator session API (`/api/v1/sessions`, `/api/v1/sessions/{id}`,
+`/api/v1/sessions/{id}/messages`).
+
+Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_messages`,
+`post_message`, `get_message`, `list_presets`, `get_preset`), `Preset`, `Session`, `Turn`,
+`Message` (`session_id`), `OrchestratorError`, `NotFound`, `OrchestratorUnavailable`.
+`Preset.spec` is the sparse preset spec and `Preset.reuse_running_agent` its optional
+agent-reuse flag; `Session.status` is the session status document.
 
     from agents_common.orchestrator import OrchestratorClient
 
     async with OrchestratorClient(base_url, token) as client:
-        cluster = await client.create_cluster(preset_id, "run-42")  # idempotent on slug
-        await client.post_message(cluster.id, "hello")
+        session = await client.create_session(preset_id, "run-42")  # idempotent on slug
+        await client.post_message(session.id, "hello")
 
 ## `fake_orchestrator`
 
-Public names: `FakeOrchestrator` (an in-process ASGI app speaking the orchestrator API).
+Public names: `FakeOrchestrator` (an in-process ASGI app speaking the agents-orchestrator
+session API; its `sessions` and `messages` dicts are the store).
 Helpers: `add_preset(name, is_default=False, spec=None)`, `mark_sent(message_id)`,
-`discard_cluster(cluster_id)` (desired `deleting`, queued messages cancelled, posts answer 409 `cluster_deleting`),
-`remove_cluster(cluster_id)` (404).
+`discard_session(session_id)` (desired `deleting`, queued messages cancelled, posts answer 409
+`session_deleting`), `remove_session(session_id)` (404), `complete_turn`, `fail_turn`,
+`fail_next(route, status)` (route labels are client method names plus `list_sessions`,
+`create_session`, `get_session`).
 
     from agents_common.fake_orchestrator import FakeOrchestrator
 
@@ -68,18 +75,19 @@ Helpers: `add_preset(name, is_default=False, spec=None)`, `mark_sent(message_id)
 
 ## `runs`
 
-Public names: `dispatch`, `post_update`, `running_cluster`, `deliver`, `track_delivery`,
-`track`, `marker`, `RunRef`, `RunStore`,
-`PresetBinding`, `RunStatus`, `RunId`.
+Public names: `dispatch`, `post_update`, `running_session`, `deliver`, `track_delivery`,
+`track`, `marker`, `RunRef` (`session_id`), `RunStore` (`set_session`, `set_message`,
+`finish`), `PresetBinding`, `RunStatus`, `RunId`. A missing preset fails the run with
+`preset_not_found`, a missing session with `session_not_found`.
 
     from agents_common.runs import dispatch, marker
 
     run = await dispatch(client, store, run, text, marker("webhook", run.id))
-    # safe to call again after a crash: no second cluster, no second message
+    # safe to call again after a crash: no second session, no second message
 
-Agent reuse: `running_cluster(client, cluster_id)` returns the cluster only while it exists with
-desired `active`. `deliver(...)` posts like `post_update` but returns None (run left open) when
-the cluster is gone, so the caller can create a new one. `track_delivery(client, store, run,
+Agent reuse: `running_session(client, session_id)` returns the session only while it exists
+with desired `active`. `deliver(...)` posts like `post_update` but returns None (run left open)
+when the session is gone, so the caller can create a new one. `track_delivery(client, store, run,
 timeout_seconds=...)` returns "handled" (message sent, run finished), "gone" (message cancelled,
 failed or missing, run left open), or None (still pending; past the timeout the run is finished
 failed with `timeout`).

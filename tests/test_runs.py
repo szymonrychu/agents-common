@@ -41,14 +41,14 @@ class MemoryStore:
     def add(self, run: RunRef) -> None:
         self.rows[run.id] = {
             "status": "in-progress",
-            "cluster_id": run.cluster_id,
+            "session_id": run.session_id,
             "message_id": run.message_id,
             "reason": None,
         }
 
     def ref(self, run: RunRef) -> RunRef:
         row = self.rows[run.id]
-        return dataclasses.replace(run, cluster_id=row["cluster_id"], message_id=row["message_id"])
+        return dataclasses.replace(run, session_id=row["session_id"], message_id=row["message_id"])
 
     def _guard(self, name: str, run_id: Any) -> dict[str, Any] | None:
         if self.crash_on == name:
@@ -57,10 +57,10 @@ class MemoryStore:
         row = self.rows[run_id]
         return row if row["status"] == "in-progress" else None
 
-    async def set_cluster(self, run_id: Any, cluster_id: str) -> None:
-        row = self._guard("set_cluster", run_id)
-        if row is not None and row["cluster_id"] is None:
-            row["cluster_id"] = cluster_id
+    async def set_session(self, run_id: Any, session_id: str) -> None:
+        row = self._guard("set_session", run_id)
+        if row is not None and row["session_id"] is None:
+            row["session_id"] = session_id
 
     async def set_message(self, run_id: Any, message_id: str) -> None:
         row = self._guard("set_message", run_id)
@@ -119,7 +119,7 @@ def run(fake, store) -> RunRef:
         id=1,
         slug="wh-1",
         preset_id=str(preset.id),
-        cluster_id=None,
+        session_id=None,
         message_id=None,
         started_at=T0,
     )
@@ -132,7 +132,7 @@ def posts(fake: FakeOrchestrator) -> list[Any]:
 
 
 def creates(fake: FakeOrchestrator) -> list[Any]:
-    return [r for r in fake.requests if r.method == "POST" and r.url.path == "/api/v1/clusters"]
+    return [r for r in fake.requests if r.method == "POST" and r.url.path == "/api/v1/sessions"]
 
 
 def test_marker_format():
@@ -151,18 +151,18 @@ def test_preset_binding_and_store_protocol(store):
 async def test_dispatch_happy_path(fake, client, store, run):
     out = await dispatch(client, store, run, "do the thing", MARK)
 
-    assert len(fake.clusters) == 1
-    cluster = next(iter(fake.clusters.values()))
-    assert cluster["slug"] == "wh-1"
-    assert cluster["preset_id"] == run.preset_id
-    assert out.cluster_id == cluster["id"]
+    assert len(fake.sessions) == 1
+    session = next(iter(fake.sessions.values()))
+    assert session["slug"] == "wh-1"
+    assert session["preset_id"] == run.preset_id
+    assert out.session_id == session["id"]
     assert len(fake.messages) == 1
     msg = next(iter(fake.messages.values()))
     assert msg["text"] == "do the thing\n\n" + MARK
-    assert msg["cluster_id"] == cluster["id"]
+    assert msg["session_id"] == session["id"]
     assert out.message_id == str(msg["id"])
     assert store.ref(run) == out
-    assert store.calls == [("set_cluster", 1), ("set_message", 1)]
+    assert store.calls == [("set_session", 1), ("set_message", 1)]
 
     fake.complete_turn(msg["id"], "done")
     assert await track(client, store, out, T0 + timedelta(seconds=5), 3600) == "handled"
@@ -178,32 +178,32 @@ async def test_dispatch_again_is_a_noop_when_both_ids_are_stored(fake, client, s
     assert len(fake.requests) == n
 
 
-async def test_crash_after_create_resumes_without_second_cluster(fake, client, store, run):
+async def test_crash_after_create_resumes_without_second_session(fake, client, store, run):
     with pytest.raises(Crash):
-        await dispatch(CrashingClient(client, "create_cluster"), store, run, "x", MARK)
-    assert len(fake.clusters) == 1
-    assert store.rows[1]["cluster_id"] is None  # died before set_cluster
+        await dispatch(CrashingClient(client, "create_session"), store, run, "x", MARK)
+    assert len(fake.sessions) == 1
+    assert store.rows[1]["session_id"] is None  # died before set_session
 
     out = await dispatch(client, store, store.ref(run), "x", MARK)
 
-    assert len(fake.clusters) == 1  # 409 resolved the existing cluster by slug
-    assert out.cluster_id == next(iter(fake.clusters))
+    assert len(fake.sessions) == 1  # 409 resolved the existing session by slug
+    assert out.session_id == next(iter(fake.sessions))
     assert len(fake.messages) == 1
 
 
-async def test_crash_after_set_cluster_resumes_without_second_cluster(fake, client, store, run):
+async def test_crash_after_set_session_resumes_without_second_session(fake, client, store, run):
     with pytest.raises(Crash):
         await dispatch(CrashingClient(client, "list_messages"), store, run, "x", MARK)
     stored = store.ref(run)
-    assert stored.cluster_id is not None
+    assert stored.session_id is not None
     assert stored.message_id is None
     assert fake.messages == {}
 
     out = await dispatch(client, store, stored, "x", MARK)
 
     assert len(creates(fake)) == 1  # no create call on resume
-    assert len(fake.clusters) == 1
-    assert out.cluster_id == stored.cluster_id
+    assert len(fake.sessions) == 1
+    assert out.session_id == stored.session_id
     assert len(fake.messages) == 1
 
 
@@ -237,9 +237,9 @@ async def test_crash_in_set_message_adopts_the_marker_message(fake, client, stor
 
 
 async def test_crash_resume_ignores_messages_without_the_marker(fake, client, store, run):
-    cluster = await client.create_cluster(run.preset_id, run.slug)
-    other = await client.post_message(cluster.id, "unrelated <!-- agents-webhook:event:11 -->")
-    await store.set_cluster(run.id, str(cluster.id))
+    session = await client.create_session(run.preset_id, run.slug)
+    other = await client.post_message(session.id, "unrelated <!-- agents-webhook:event:11 -->")
+    await store.set_session(run.id, str(session.id))
 
     out = await dispatch(client, store, store.ref(run), "x", MARK)
 
@@ -247,14 +247,14 @@ async def test_crash_resume_ignores_messages_without_the_marker(fake, client, st
     assert fake.messages[int(out.message_id)]["text"].endswith(MARK)
 
 
-async def test_dispatch_409_resolves_existing_cluster(fake, client, store, run):
-    existing = await client.create_cluster(run.preset_id, "wh-1")
+async def test_dispatch_409_resolves_existing_session(fake, client, store, run):
+    existing = await client.create_session(run.preset_id, "wh-1")
 
     out = await dispatch(client, store, run, "x", MARK)
 
-    assert out.cluster_id == str(existing.id)
-    assert len(fake.clusters) == 1
-    assert store.rows[1]["cluster_id"] == str(existing.id)
+    assert out.session_id == str(existing.id)
+    assert len(fake.sessions) == 1
+    assert store.rows[1]["session_id"] == str(existing.id)
 
 
 async def test_dispatch_preset_not_found_fails_the_run(fake, client, store, run):
@@ -263,21 +263,21 @@ async def test_dispatch_preset_not_found_fails_the_run(fake, client, store, run)
         await dispatch(client, store, gone, "x", MARK)
     assert store.rows[1]["status"] == "failed"
     assert store.rows[1]["reason"] == "preset_not_found"
-    assert fake.clusters == {}
+    assert fake.sessions == {}
 
 
-async def test_dispatch_cluster_not_found_fails_the_run(fake, client, store, run):
-    lost = dataclasses.replace(run, cluster_id="00000000-0000-0000-0000-000000000000")
-    store.rows[1]["cluster_id"] = lost.cluster_id
+async def test_missing_session_fails_run(fake, client, store, run):
+    lost = dataclasses.replace(run, session_id="00000000-0000-0000-0000-000000000000")
+    store.rows[1]["session_id"] = lost.session_id
     with pytest.raises(NotFound):
         await dispatch(client, store, lost, "x", MARK)
     assert store.rows[1]["status"] == "failed"
-    assert store.rows[1]["reason"] == "cluster_not_found"
+    assert store.rows[1]["reason"] == "session_not_found"
     assert fake.messages == {}
 
 
 async def test_dispatch_unavailable_propagates_and_leaves_the_run(fake, client, store, run):
-    fake.fail_next("create_cluster", 503)
+    fake.fail_next("create_session", 503)
     with pytest.raises(OrchestratorUnavailable):
         await dispatch(client, store, run, "x", MARK)
     assert store.rows[1]["status"] == "in-progress"
@@ -351,12 +351,12 @@ async def test_track_unavailable_propagates(fake, client, store, run):
     assert store.rows[1]["status"] == "in-progress"
 
 
-async def test_track_message_gone_is_cluster_not_found(fake, client, store, run):
+async def test_track_message_gone_is_session_not_found(fake, client, store, run):
     out = await _dispatched(client, store, run)
     fake.messages.clear()
-    fake.clusters.clear()
+    fake.sessions.clear()
     assert await track(client, store, out, T0, 60) == "failed"
-    assert (store.rows[1]["status"], store.rows[1]["reason"]) == ("failed", "cluster_not_found")
+    assert (store.rows[1]["status"], store.rows[1]["reason"]) == ("failed", "session_not_found")
 
 
 async def test_track_requires_a_message_id(client, store, run):
@@ -374,7 +374,7 @@ def _update_run(store: MemoryStore, parent: RunRef) -> RunRef:
         id=2,
         slug=parent.slug,
         preset_id=parent.preset_id,
-        cluster_id=None,
+        session_id=None,
         message_id=None,
         started_at=T0,
     )
@@ -385,32 +385,32 @@ def _update_run(store: MemoryStore, parent: RunRef) -> RunRef:
 UPDATE_MARK = "<!-- agents-webhook:event:2 -->"
 
 
-async def test_update_message_posts_to_the_existing_cluster(fake, client, store, parent):
+async def test_update_message_posts_to_the_existing_session(fake, client, store, parent):
     upd = _update_run(store, parent)
 
-    out = await post_update(client, store, upd, parent.cluster_id, "new comment", UPDATE_MARK)
+    out = await post_update(client, store, upd, parent.session_id, "new comment", UPDATE_MARK)
 
-    assert len(fake.clusters) == 1
+    assert len(fake.sessions) == 1
     assert len(creates(fake)) == 1  # only the parent's create
     assert len(fake.messages) == 2
     msg = fake.messages[int(out.message_id)]
-    assert msg["cluster_id"] == parent.cluster_id
+    assert msg["session_id"] == parent.session_id
     assert msg["text"] == "new comment\n\n" + UPDATE_MARK
     assert store.rows[2]["message_id"] == out.message_id
-    assert store.rows[2]["cluster_id"] == parent.cluster_id
-    assert out.cluster_id == parent.cluster_id
+    assert store.rows[2]["session_id"] == parent.session_id
+    assert out.session_id == parent.session_id
 
 
 async def test_update_message_crash_after_post_adopts(fake, client, store, parent):
     upd = _update_run(store, parent)
     with pytest.raises(Crash):
         await post_update(
-            CrashingClient(client, "post_message"), store, upd, parent.cluster_id, "c", UPDATE_MARK
+            CrashingClient(client, "post_message"), store, upd, parent.session_id, "c", UPDATE_MARK
         )
     assert len(fake.messages) == 2
     n_posts = len(posts(fake))
 
-    out = await post_update(client, store, store.ref(upd), parent.cluster_id, "c", UPDATE_MARK)
+    out = await post_update(client, store, store.ref(upd), parent.session_id, "c", UPDATE_MARK)
 
     assert len(posts(fake)) == n_posts
     assert len(fake.messages) == 2
@@ -420,15 +420,15 @@ async def test_update_message_crash_after_post_adopts(fake, client, store, paren
 
 async def test_update_message_with_stored_id_posts_nothing(fake, client, store, parent):
     upd = _update_run(store, parent)
-    out = await post_update(client, store, upd, parent.cluster_id, "c", UPDATE_MARK)
+    out = await post_update(client, store, upd, parent.session_id, "c", UPDATE_MARK)
     n = len(fake.requests)
-    assert await post_update(client, store, out, parent.cluster_id, "c", UPDATE_MARK) == out
+    assert await post_update(client, store, out, parent.session_id, "c", UPDATE_MARK) == out
     assert len(fake.requests) == n
 
 
-async def test_update_message_cluster_gone_fails_the_run(fake, client, store, parent):
+async def test_update_message_session_gone_fails_the_run(fake, client, store, parent):
     upd = _update_run(store, parent)
-    fake.clusters.clear()
+    fake.sessions.clear()
     with pytest.raises(NotFound):
-        await post_update(client, store, upd, parent.cluster_id, "c", UPDATE_MARK)
-    assert (store.rows[2]["status"], store.rows[2]["reason"]) == ("failed", "cluster_not_found")
+        await post_update(client, store, upd, parent.session_id, "c", UPDATE_MARK)
+    assert (store.rows[2]["status"], store.rows[2]["reason"]) == ("failed", "session_not_found")
