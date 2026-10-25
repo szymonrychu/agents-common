@@ -37,6 +37,11 @@ class Preset(_Model):
     id: uuid.UUID
     name: str
     is_default: bool = False
+    spec: dict[str, Any] = {}
+
+    @property
+    def reuse_running_agent(self) -> bool:
+        return self.spec.get("reuse_running_agent") is True
 
 
 class Cluster(_Model):
@@ -44,6 +49,7 @@ class Cluster(_Model):
     slug: str
     preset_id: uuid.UUID | None = None
     desired: str | None = None
+    status: dict[str, Any] | None = None
 
 
 class Turn(_Model):
