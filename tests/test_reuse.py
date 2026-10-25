@@ -200,7 +200,7 @@ async def test_fake_discard_and_sent(client, fake):
 
     with pytest.raises(OrchestratorError) as err:
         await client.post_message(cid, "z")
-    assert err.value.status == 409 and err.value.code == "conflict"
+    assert err.value.status == 409 and err.value.code == "cluster_deleting"
     fake.remove_cluster(cid)
     with pytest.raises(NotFound):
         await client.get_cluster(cid)

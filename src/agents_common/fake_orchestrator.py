@@ -167,7 +167,7 @@ class FakeOrchestrator:
         if request.method == "GET":
             return JSONResponse([m for m in self.messages.values() if m["cluster_id"] == cid])
         if self.clusters[cid]["desired"] == "deleting":
-            return _error(409, "conflict", "cluster is being deleted")
+            return _error(409, "cluster_deleting", "cluster is being deleted")
         body = await request.json()
         mid = self._next_message_id
         self._next_message_id += 1

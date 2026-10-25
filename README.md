@@ -58,7 +58,7 @@ cluster status document.
 
 Public names: `FakeOrchestrator` (an in-process ASGI app speaking the orchestrator API).
 Helpers: `add_preset(name, is_default=False, spec=None)`, `mark_sent(message_id)`,
-`discard_cluster(cluster_id)` (desired `deleting`, queued messages cancelled, posts answer 409),
+`discard_cluster(cluster_id)` (desired `deleting`, queued messages cancelled, posts answer 409 `cluster_deleting`),
 `remove_cluster(cluster_id)` (404).
 
     from agents_common.fake_orchestrator import FakeOrchestrator
