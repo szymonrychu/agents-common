@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.0
+
+Agent reuse support. v0.1.0 names are unchanged.
+
+- `orchestrator`: `Preset.spec` (sparse preset spec), `Preset.reuse_running_agent` (optional flag) and `Cluster.status` (status document).
+- `runs`: `running_cluster`, `deliver` and `track_delivery` for posting into a still-running cluster.
+- `fake_orchestrator`: `add_preset(spec=...)`, `mark_sent`, `discard_cluster` and `remove_cluster` helpers.
+
 ## v0.1.0
 
 First release.
