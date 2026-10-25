@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0
+
+Session client. Needs agents-orchestrator with the session API.
+
+Breaking:
+
+- `orchestrator`: `Cluster` is now `Session`.
+- `create_cluster`, `get_cluster`, `running_cluster`, `set_cluster`, `discard_cluster` and `remove_cluster` are now `create_session`, `get_session`, `running_session`, `set_session`, `discard_session` and `remove_session` (client, `runs` and `fake_orchestrator`).
+- `RunRef.session_id` replaces the cluster id field.
+- Failure reason `session_not_found`.
+- Routes are `/api/v1/sessions`.
+
 ## v0.2.0
 
 Agent reuse support. v0.1.0 names are unchanged.

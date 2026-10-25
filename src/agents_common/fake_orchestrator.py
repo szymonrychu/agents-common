@@ -1,4 +1,4 @@
-"""In-memory fake of the orchestrator's service API, for tests and e2e."""
+"""In-memory fake of the agents-orchestrator service API, for tests and e2e."""
 
 from __future__ import annotations
 
@@ -21,12 +21,13 @@ def _now() -> str:
 
 
 class FakeOrchestrator:
-    """Serves the service-port routes the client uses. `app` is an ASGI app."""
+    """Serves the agents-orchestrator service-port routes the client uses (presets, sessions,
+    messages). `app` is an ASGI app."""
 
     def __init__(self, token: str = "test-token"):
         self.token = token
         self.presets: dict[str, dict[str, Any]] = {}
-        self.clusters: dict[str, dict[str, Any]] = {}
+        self.sessions: dict[str, dict[str, Any]] = {}
         self.messages: dict[int, dict[str, Any]] = {}
         self.requests: list[Request] = []
         self._fail: dict[str, list[int]] = {}
@@ -36,13 +37,13 @@ class FakeOrchestrator:
                 Route("/api/v1/presets", self._wrap("list_presets", self._list_presets)),
                 Route("/api/v1/presets/{id}", self._wrap("get_preset", self._get_preset)),
                 Route(
-                    "/api/v1/clusters",
-                    self._wrap("clusters", self._clusters),
+                    "/api/v1/sessions",
+                    self._wrap("sessions", self._sessions),
                     methods=["GET", "POST"],
                 ),
-                Route("/api/v1/clusters/{id}", self._wrap("get_cluster", self._get_cluster)),
+                Route("/api/v1/sessions/{id}", self._wrap("get_session", self._get_session)),
                 Route(
-                    "/api/v1/clusters/{id}/messages",
+                    "/api/v1/sessions/{id}/messages",
                     self._wrap("messages", self._messages),
                     methods=["GET", "POST"],
                 ),
@@ -69,18 +70,19 @@ class FakeOrchestrator:
     def mark_sent(self, message_id: int) -> None:
         self.messages[message_id]["status"] = "sent"
 
-    def discard_cluster(self, cluster_id: str) -> None:
-        """Start deleting: desired becomes `deleting`, queued messages are cancelled."""
-        self.clusters[str(cluster_id)]["desired"] = "deleting"
+    def discard_session(self, session_id: str) -> None:
+        """Start deleting the session: desired becomes `deleting`, queued messages are cancelled
+        and posts answer 409 `session_deleting`."""
+        self.sessions[str(session_id)]["desired"] = "deleting"
         for msg in self.messages.values():
-            if msg["cluster_id"] == str(cluster_id) and msg["status"] == "queued":
+            if msg["session_id"] == str(session_id) and msg["status"] == "queued":
                 msg["status"] = "cancelled"
 
-    def remove_cluster(self, cluster_id: str) -> None:
-        """The cluster row is gone: it and its messages answer 404."""
-        cid = str(cluster_id)
-        del self.clusters[cid]
-        self.messages = {i: m for i, m in self.messages.items() if m["cluster_id"] != cid}
+    def remove_session(self, session_id: str) -> None:
+        """The session row is gone: it and its messages answer 404."""
+        sid = str(session_id)
+        del self.sessions[sid]
+        self.messages = {i: m for i, m in self.messages.items() if m["session_id"] != sid}
 
     def complete_turn(self, message_id: int, final_text: str) -> None:
         msg = self.messages[message_id]
@@ -100,7 +102,7 @@ class FakeOrchestrator:
 
     def fail_next(self, route: str, status: int) -> None:
         """Answer the next call of `route` with `status` (route is a method name of the
-        client, plus `list_clusters`/`create_cluster`/`list_messages`/`post_message`)."""
+        client, plus `list_sessions`/`create_session`/`list_messages`/`post_message`)."""
         self._fail.setdefault(route, []).append(status)
 
     # plumbing ------------------------------------------------------------
@@ -111,8 +113,8 @@ class FakeOrchestrator:
             if request.headers.get("authorization") != f"Bearer {self.token}":
                 return _error(401, "unauthorized", "missing or invalid service token")
             route = name
-            if name == "clusters":
-                route = "create_cluster" if request.method == "POST" else "list_clusters"
+            if name == "sessions":
+                route = "create_session" if request.method == "POST" else "list_sessions"
             elif name == "messages":
                 route = "post_message" if request.method == "POST" else "list_messages"
             queued = self._fail.get(route)
@@ -133,47 +135,47 @@ class FakeOrchestrator:
             return _error(404, "not_found", "preset not found")
         return JSONResponse(preset)
 
-    async def _clusters(self, request: Request):
+    async def _sessions(self, request: Request):
         if request.method == "GET":
-            return JSONResponse(list(self.clusters.values()))
+            return JSONResponse(list(self.sessions.values()))
         body = await request.json()
         preset_id, slug = body.get("preset_id"), body.get("slug")
         if preset_id not in self.presets:
             return _error(404, "not_found", "preset not found")
-        if any(c["slug"] == slug for c in self.clusters.values()):
-            return _error(409, "conflict", f"cluster {slug!r} already exists")
-        cid = str(uuid.uuid4())
-        cluster = {
-            "id": cid,
+        if any(s["slug"] == slug for s in self.sessions.values()):
+            return _error(409, "conflict", f"session {slug!r} already exists")
+        sid = str(uuid.uuid4())
+        session = {
+            "id": sid,
             "slug": slug,
             "preset_id": preset_id,
             "preset_name": self.presets[preset_id]["name"],
             "desired": "active",
             "created_at": _now(),
         }
-        self.clusters[cid] = cluster
-        return JSONResponse(cluster, status_code=201)
+        self.sessions[sid] = session
+        return JSONResponse(session, status_code=201)
 
-    async def _get_cluster(self, request: Request):
-        cluster = self.clusters.get(request.path_params["id"])
-        if cluster is None:
-            return _error(404, "not_found", "cluster not found")
-        return JSONResponse(cluster)
+    async def _get_session(self, request: Request):
+        session = self.sessions.get(request.path_params["id"])
+        if session is None:
+            return _error(404, "not_found", "session not found")
+        return JSONResponse(session)
 
     async def _messages(self, request: Request):
-        cid = request.path_params["id"]
-        if cid not in self.clusters:
-            return _error(404, "not_found", "cluster not found")
+        sid = request.path_params["id"]
+        if sid not in self.sessions:
+            return _error(404, "not_found", "session not found")
         if request.method == "GET":
-            return JSONResponse([m for m in self.messages.values() if m["cluster_id"] == cid])
-        if self.clusters[cid]["desired"] == "deleting":
-            return _error(409, "cluster_deleting", "cluster is being deleted")
+            return JSONResponse([m for m in self.messages.values() if m["session_id"] == sid])
+        if self.sessions[sid]["desired"] == "deleting":
+            return _error(409, "session_deleting", "session is being deleted")
         body = await request.json()
         mid = self._next_message_id
         self._next_message_id += 1
         self.messages[mid] = {
             "id": mid,
-            "cluster_id": cid,
+            "session_id": sid,
             "text": body["text"],
             "status": "queued",
             "error": None,
