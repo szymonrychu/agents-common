@@ -1,0 +1,50 @@
+[project]
+name = "agents-common"
+version = "0.1.0"
+description = "Shared library for the agents trigger services: database, settings, HTTP and test helpers"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg[binary,pool]>=3.2",
+    "pydantic-settings>=2",
+    "httpx>=0.27",
+    "starlette>=0.40",
+]
+
+[project.optional-dependencies]
+testing = [
+    "pytest",
+    "pytest-asyncio",
+    "testcontainers[postgres]",
+]
+
+[project.entry-points.pytest11]
+agents_common = "agents_common.testing"
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "agents-common[testing]",
+]
+
+[tool.uv.sources]
+agents-common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agents_common"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "tests"]
+asyncio_mode = "auto"
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
