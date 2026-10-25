@@ -18,6 +18,9 @@ testing = [
     "testcontainers[postgres]",
 ]
 
+[project.entry-points.pytest11]
+agents_common = "agents_common.testing"
+
 [dependency-groups]
 dev = [
     "ruff",
