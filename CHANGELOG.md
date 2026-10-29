@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.0
+
+Command messages. Needs agents-orchestrator with `MessageView.command`. No breaking change.
+
+- `orchestrator`: `Message.command` (`CommandOutcome`: `state`, `result`, `error`, `turn_id`, `at`).
+- `runs`: `track` judges a command message by its outcome (failure reasons `command_<error>` and `command_cancelled`).
+- `fake_orchestrator`: `complete_command` and `fail_command`.
+
 ## v0.3.0
 
 Session client. Needs agents-orchestrator with the session API.
