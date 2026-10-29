@@ -63,12 +63,24 @@ class Turn(_Model):
     final_text: str | None = None
 
 
+class CommandOutcome(_Model):
+    """A command message's outcome: `state` is completed, failed or cancelled; a completed
+    command with `result` `turn` was promoted to a turn (`turn_id`)."""
+
+    state: str
+    result: str | None = None
+    error: str | None = None
+    turn_id: str | None = None
+    at: datetime | None = None
+
+
 class Message(_Model):
     id: int
     status: str
     session_id: uuid.UUID | None = None
     text: str | None = None
     turn: Turn | None = None
+    command: CommandOutcome | None = None
 
 
 class _Accepted(_Model):

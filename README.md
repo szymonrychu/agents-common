@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.3.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.4.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.3.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.4.0`.
 
 ## `settings`
 
@@ -48,9 +48,11 @@ Client of the agents-orchestrator session API (`/api/v1/sessions`, `/api/v1/sess
 
 Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_messages`,
 `post_message`, `get_message`, `list_presets`, `get_preset`), `Preset`, `Session`, `Turn`,
-`Message` (`session_id`), `OrchestratorError`, `NotFound`, `OrchestratorUnavailable`.
+`Message` (`session_id`, `command`), `CommandOutcome`, `OrchestratorError`, `NotFound`, `OrchestratorUnavailable`.
 `Preset.spec` is the sparse preset spec and `Preset.reuse_running_agent` its optional
-agent-reuse flag; `Session.status` is the session status document.
+agent-reuse flag; `Session.status` is the session status document. `Message.command` is a
+command message's outcome (`state` completed, failed or cancelled, `result`, `error`,
+`turn_id`, `at`), None for a turn message and for a command with no outcome yet.
 
     from agents_common.orchestrator import OrchestratorClient
 
@@ -65,6 +67,9 @@ session API; its `sessions` and `messages` dicts are the store).
 Helpers: `add_preset(name, is_default=False, spec=None)`, `mark_sent(message_id)`,
 `discard_session(session_id)` (desired `deleting`, queued messages cancelled, posts answer 409
 `session_deleting`), `remove_session(session_id)` (404), `complete_turn`, `fail_turn`,
+`complete_command(message_id, result="ok", turn_id=None)` and
+`fail_command(message_id, error, state="failed")` (`state` `failed` or `cancelled`; both mark the
+message `sent` with that command outcome),
 `fail_next(route, status)` (route labels are client method names plus `list_sessions`,
 `create_session`, `get_session`).
 
@@ -91,6 +96,15 @@ when the session is gone, so the caller can create a new one. `track_delivery(cl
 timeout_seconds=...)` returns "handled" (message sent, run finished), "gone" (message cancelled,
 failed or missing, run left open), or None (still pending; past the timeout the run is finished
 failed with `timeout`).
+
+`track(client, store, run, now, timeout_seconds)` finishes the run by its message: a completed
+turn is handled, a failed or cancelled message is `message_failed` / `message_cancelled`, a failed
+turn is `turn_failed`. A command message with no turn is judged by its outcome: completed (`ok`,
+`dismissed`, `skipped_cache`) is handled, failed is `command_<error>` (for example
+`command_unknown_command`, `command_dialog_stuck`, `command_timeout`; `command_failed` when the
+outcome has no error code) and cancelled is `command_cancelled`. A command promoted to a turn
+(result `turn`) is decided by its turn. With no decision past `timeout_seconds` the run fails with
+`timeout`.
 
 ## `testing`
 
