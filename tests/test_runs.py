@@ -364,6 +364,80 @@ async def test_track_requires_a_message_id(client, store, run):
         await track(client, store, run, T0, 60)
 
 
+@pytest.mark.parametrize("result", ["ok", "dismissed", "skipped_cache"])
+async def test_track_command_completed_is_handled(fake, client, store, run, result):
+    out = await _dispatched(client, store, run)
+    fake.complete_command(int(out.message_id), result=result)
+    assert await track(client, store, out, T0, 60) == "handled"
+    assert (store.rows[1]["status"], store.rows[1]["reason"]) == ("handled", None)
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        ("unknown_command", "command_unknown_command"),
+        ("dialog_stuck", "command_dialog_stuck"),
+        ("timeout", "command_timeout"),
+        (None, "command_failed"),
+    ],
+)
+async def test_track_command_failed_reason_is_error_code(fake, client, store, run, error, reason):
+    out = await _dispatched(client, store, run)
+    fake.fail_command(int(out.message_id), error)
+    assert fake.messages[int(out.message_id)]["status"] == "sent"
+    assert await track(client, store, out, T0, 60) == "failed"
+    assert (store.rows[1]["status"], store.rows[1]["reason"]) == ("failed", reason)
+
+
+async def test_track_command_cancelled_is_failed(fake, client, store, run):
+    out = await _dispatched(client, store, run)
+    fake.fail_command(int(out.message_id), "cancelled", state="cancelled")
+    assert await track(client, store, out, T0, 60) == "failed"
+    assert (store.rows[1]["status"], store.rows[1]["reason"]) == ("failed", "command_cancelled")
+
+
+def _promoted(fake: FakeOrchestrator, message_id: int, turn_status: str | None) -> None:
+    fake.complete_command(message_id, result="turn", turn_id="turn-1")
+    if turn_status is not None:
+        fake.messages[message_id]["turn"] = {
+            "status": turn_status,
+            "started_at": T0.isoformat(),
+            "completed_at": T0.isoformat() if turn_status == "completed" else None,
+        }
+
+
+async def test_track_promoted_command_waits_for_turn(fake, client, store, run):
+    out = await _dispatched(client, store, run)
+    mid = int(out.message_id)
+
+    _promoted(fake, mid, None)  # outcome arrived before the turn link
+    assert await track(client, store, out, T0 + timedelta(seconds=1), 60) is None
+    _promoted(fake, mid, "running")
+    assert await track(client, store, out, T0 + timedelta(seconds=1), 60) is None
+    assert store.rows[1]["status"] == "in-progress"
+    assert ("finish", 1) not in store.calls
+
+    _promoted(fake, mid, "completed")
+    assert await track(client, store, out, T0, 60) == "handled"
+    assert (store.rows[1]["status"], store.rows[1]["reason"]) == ("handled", None)
+
+    failed = _update_run(store, out)
+    failed = await post_update(client, store, failed, out.session_id, "y", UPDATE_MARK)
+    _promoted(fake, int(failed.message_id), "failed")
+    assert await track(client, store, failed, T0, 60) == "failed"
+    assert (store.rows[2]["status"], store.rows[2]["reason"]) == ("failed", "turn_failed")
+
+
+async def test_track_command_pending_times_out(fake, client, store, run):
+    out = await _dispatched(client, store, run)
+    fake.mark_sent(int(out.message_id))
+    assert (await client.get_message(int(out.message_id))).command is None
+    assert await track(client, store, out, T0 + timedelta(seconds=60), 60) is None
+    assert store.rows[1]["status"] == "in-progress"
+    assert await track(client, store, out, T0 + timedelta(seconds=61), 60) == "failed"
+    assert (store.rows[1]["status"], store.rows[1]["reason"]) == ("failed", "timeout")
+
+
 @pytest.fixture
 async def parent(fake, client, store, run) -> RunRef:
     return await _dispatched(client, store, run)

@@ -100,6 +100,37 @@ class FakeOrchestrator:
         msg["error"] = "turn failed"
         msg["turn"] = None
 
+    def complete_command(
+        self, message_id: int, result: str = "ok", turn_id: str | None = None
+    ) -> None:
+        """Mark a command message sent with a completed outcome (result `turn` with `turn_id`
+        is a command promoted to a turn)."""
+        self._command_outcome(message_id, "completed", result, None, turn_id)
+
+    def fail_command(self, message_id: int, error: str | None, state: str = "failed") -> None:
+        """Mark a command message sent with a failed or cancelled outcome."""
+        if state not in ("failed", "cancelled"):
+            raise ValueError(f"fail_command state must be failed or cancelled, not {state!r}")
+        self._command_outcome(message_id, state, None, error, None)
+
+    def _command_outcome(
+        self,
+        message_id: int,
+        state: str,
+        result: str | None,
+        error: str | None,
+        turn_id: str | None,
+    ) -> None:
+        msg = self.messages[message_id]
+        msg["status"] = "sent"
+        msg["command"] = {
+            "state": state,
+            "result": result,
+            "error": error,
+            "turn_id": turn_id,
+            "at": _now(),
+        }
+
     def fail_next(self, route: str, status: int) -> None:
         """Answer the next call of `route` with `status` (route is a method name of the
         client, plus `list_sessions`/`create_session`/`list_messages`/`post_message`)."""
@@ -181,6 +212,7 @@ class FakeOrchestrator:
             "error": None,
             "created_at": _now(),
             "turn": None,
+            "command": None,
         }
         return JSONResponse({"message_id": mid, "status": "queued"}, status_code=202)
 

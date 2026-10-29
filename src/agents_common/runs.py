@@ -167,6 +167,11 @@ async def track(
 ) -> RunStatus | None:
     """Poll the run's message once; finish the run when it is decided.
 
+    A turn decides the run; a command message with no turn is decided by its outcome: completed
+    is handled, failed is `command_<error>` (`command_failed` without one), cancelled is
+    `command_cancelled`. A command promoted to a turn (result `turn`) and a command with no
+    outcome yet wait for the turn or the timeout.
+
     Returns the status the run was finished with, or None while it is still running.
     OrchestratorUnavailable propagates so the caller retries on its next tick.
     """
@@ -183,6 +188,14 @@ async def track(
         return await _finish(store, run, "failed", f"message_{message.status}")
     if turn is not None and turn.status == "failed":
         return await _finish(store, run, "failed", "turn_failed")
+    command = message.command
+    promoted = command is not None and command.state == "completed" and command.result == "turn"
+    if turn is None and command is not None and not promoted:
+        if command.state == "completed":
+            return await _finish(store, run, "handled", None)
+        if command.state == "cancelled":
+            return await _finish(store, run, "failed", "command_cancelled")
+        return await _finish(store, run, "failed", f"command_{command.error or 'failed'}")
     if (now - run.started_at).total_seconds() > timeout_seconds:
         return await _finish(store, run, "failed", "timeout")
     return None

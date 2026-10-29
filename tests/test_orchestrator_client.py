@@ -52,6 +52,56 @@ async def test_roundtrip_all_methods(fake):
         assert msg.turn.completed_at is not None
 
 
+async def test_message_command_outcome_roundtrip(fake):
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "cmd")
+        turn = await client.post_message(session.id, "hello")
+        ok = await client.post_message(session.id, "/compact")
+        promoted = await client.post_message(session.id, "/review")
+        failed = await client.post_message(session.id, "/nope")
+        cancelled = await client.post_message(session.id, "/clear")
+
+        fake.complete_turn(turn.id, "done")
+        fake.complete_command(ok.id)
+        fake.complete_command(promoted.id, result="turn", turn_id="turn-7")
+        fake.fail_command(failed.id, "unknown_command")
+        fake.fail_command(cancelled.id, None, state="cancelled")
+        with pytest.raises(ValueError):
+            fake.fail_command(failed.id, "x", state="completed")
+
+        got_turn = await client.get_message(turn.id)
+        assert got_turn.command is None
+
+        got = await client.get_message(ok.id)
+        assert got.status == "sent"
+        assert got.command is not None
+        assert (got.command.state, got.command.result, got.command.error) == (
+            "completed",
+            "ok",
+            None,
+        )
+        assert got.command.turn_id is None
+        assert got.command.at is not None
+
+        got = await client.get_message(promoted.id)
+        assert (got.command.state, got.command.result) == ("completed", "turn")
+        assert got.command.turn_id == "turn-7"
+
+        got = await client.get_message(failed.id)
+        assert got.status == "sent"
+        assert (got.command.state, got.command.result) == ("failed", None)
+        assert got.command.error == "unknown_command"
+
+        got = await client.get_message(cancelled.id)
+        assert got.status == "sent"
+        assert (got.command.state, got.command.error) == ("cancelled", None)
+
+        listed = {m.id: m.command for m in await client.list_messages(session.id)}
+        assert listed[turn.id] is None
+        assert listed[failed.id].error == "unknown_command"
+
+
 async def test_roundtrip_sends_bearer_header(fake):
     async with make_client(fake) as client:
         await client.list_presets()
