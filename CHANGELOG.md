@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.0
+
+Service gate. No breaking change.
+
+- `service_gate`: `ServiceTokenGate` bearer service-token ASGI guard and `load_tokens`.
+
 ## v0.5.0
 
 Templating. No breaking change.

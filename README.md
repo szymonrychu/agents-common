@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.5.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.6.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.5.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.6.0`.
 
 ## `settings`
 
@@ -126,6 +126,18 @@ Jinja2; `render` runs in a killable child bounded by `timeout` and `memory_mb`.
     render("Hi {{ name }}", {"name": "x"})          # "Hi x"
     render("{{ (raw | from_json).a }}", {"raw": '{"a": 1}'})   # "1"; from_json parses a JSON string
     preview("Hi {{ name }}", {})                    # {rendered, error{line,message}, variables}; never raises
+
+## `service_gate`
+
+Public names: `ServiceTokenGate`, `load_tokens`, `EXEMPT_PATHS`. ASGI guard for a token-gated
+admin listener: 401 (one shared body, `WWW-Authenticate: Bearer`) unless the bearer token matches
+one of the accepted tokens; GET/HEAD on `/healthz` and `/readyz` are exempt; websockets are closed.
+Tokens are compared by sha256 digest with `hmac.compare_digest` against every entry, and the
+presented token is never logged.
+
+    from agents_common.service_gate import ServiceTokenGate, load_tokens
+
+    app = ServiceTokenGate(app, load_tokens("/etc/tokens/admin"))  # one token per line
 
 ## Versioning
 
