@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.0
+
+Templating. No breaking change.
+
+- `templating`: sandboxed Jinja2 `render`, `validate`, `undeclared_variables` and `preview`; `TemplateError` carries the message and line.
+- `templating`: built-in `from_json` filter.
+
 ## v0.4.0
 
 Command messages. Needs agents-orchestrator with `MessageView.command`. No breaking change.

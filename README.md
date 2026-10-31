@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.4.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.5.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.4.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.5.0`.
 
 ## `settings`
 
@@ -113,6 +113,19 @@ entry point; needs the `testing` extra and Docker).
 
     def test_it(migrated_db):
         url = migrated_db("myservice.migrations")  # fresh DB cloned from a migrated template
+
+## `templating`
+
+Public names: `render`, `validate`, `undeclared_variables`, `preview`, `TemplateError`. Sandboxed
+Jinja2; `render` runs in a killable child bounded by `timeout` and `memory_mb`.
+
+    from agents_common.templating import render, validate, undeclared_variables, preview
+
+    validate("Hi {{ name }}")                       # raises TemplateError (message, line) if invalid
+    undeclared_variables("Hi {{ name }}")           # ["name"]
+    render("Hi {{ name }}", {"name": "x"})          # "Hi x"
+    render("{{ (raw | from_json).a }}", {"raw": '{"a": 1}'})   # "1"; from_json parses a JSON string
+    preview("Hi {{ name }}", {})                    # {rendered, error{line,message}, variables}; never raises
 
 ## Versioning
 
