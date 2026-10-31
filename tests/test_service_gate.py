@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import secrets
 
 import pytest
 from starlette.applications import Starlette
@@ -14,8 +15,9 @@ from starlette.testclient import TestClient
 from agents_common import service_gate
 from agents_common.service_gate import ServiceTokenGate, load_tokens
 
-TOKEN = "s3cret-token-aaaa"
-OTHER = "s3cret-token-bbbb"
+TOKEN = secrets.token_urlsafe(16)
+OTHER = secrets.token_urlsafe(16)
+PRESENTED = secrets.token_urlsafe(16)
 
 
 def _inner() -> Starlette:
@@ -120,9 +122,9 @@ def test_compare_digest_used(monkeypatch):
 def test_token_never_logged(caplog):
     caplog.set_level(logging.DEBUG)
     c = _client(TOKEN)
-    c.get("/admin", headers=_auth("presented-secret-xyz"))
+    c.get("/admin", headers=_auth(PRESENTED))
     c.get("/admin", headers=_auth(TOKEN))
-    assert "presented-secret-xyz" not in caplog.text
+    assert PRESENTED not in caplog.text
     assert TOKEN not in caplog.text
 
 
@@ -146,11 +148,11 @@ def test_load_tokens_missing_file_error_omits_contents(tmp_path):
 
 def test_load_tokens_non_utf8_error_leaks_no_bytes(tmp_path):
     f = tmp_path / "tokens"
-    f.write_bytes(b"good\xfe\xfdsecret\n")
+    f.write_bytes(b"good\xfe\xfdtail\n")
     with pytest.raises(ValueError) as exc:
         load_tokens(f)
     text = f"{exc.value!s} {exc.value!r}"
     assert "xfe" not in text.lower()
-    assert "secret" not in text
+    assert "tail" not in text
     assert exc.value.__cause__ is None
     assert exc.value.__suppress_context__
