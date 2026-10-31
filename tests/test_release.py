@@ -16,6 +16,7 @@ MODULES = [
     "runs",
     "testing",
     "templating",
+    "service_gate",
 ]
 
 
