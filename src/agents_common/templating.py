@@ -5,6 +5,7 @@ range, powers and repetition) inside a killable child process limited by time an
 Every failure raises `TemplateError`, which carries the template line when known.
 """
 
+import json
 import multiprocessing
 import resource
 import sys
@@ -48,6 +49,13 @@ def _bounded_range(*args: int) -> range:
     return result
 
 
+def _from_json(value: Any) -> Any:
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"from_json: invalid JSON: {exc}") from exc
+
+
 class _BoundedEnvironment(ImmutableSandboxedEnvironment):
     """Refuses sequence repetition, powers and products large enough to exhaust CPU or memory."""
 
@@ -80,6 +88,7 @@ class _BoundedEnvironment(ImmutableSandboxedEnvironment):
 
 
 _env = _BoundedEnvironment(autoescape=False, undefined=StrictUndefined)
+_env.filters["from_json"] = _from_json
 _env.globals["range"] = _bounded_range
 
 

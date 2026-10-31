@@ -79,3 +79,23 @@ def test_preview_syntax_error():
     assert result["rendered"] is None
     assert result["error"]["line"] == 1
     assert result["variables"] == []
+
+
+def test_from_json_filter_on_string():
+    out = templating.render(
+        "{{ (payload.s | from_json).a.b }}", {"payload": {"s": '{"a": {"b": 5}}'}}
+    )
+    assert out == "5"
+    assert templating.render("{{ {'k': 1} | tojson }}", {}) == '{"k": 1}'
+
+
+def test_from_json_error_is_template_error():
+    with pytest.raises(TemplateError) as info:
+        templating.render("{{ 'not json' | from_json }}", {})
+    assert "json" in str(info.value).lower()
+
+
+def test_from_json_validates_and_previews():
+    templating.validate("{{ payload.x | from_json }}")
+    result = templating.preview("{{ (raw | from_json).k }}", {"raw": '{"k": "v"}'})
+    assert result["rendered"] == "v"
