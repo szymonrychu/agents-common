@@ -34,7 +34,11 @@ def _bearer(scope: Scope) -> str | None:
 
 def load_tokens(path: str | Path) -> list[str]:
     """One token per line, blank lines and surrounding whitespace dropped; none is an error."""
-    tokens = [line.strip() for line in Path(path).read_text().splitlines() if line.strip()]
+    try:
+        text = Path(path).read_text()
+    except UnicodeDecodeError:
+        raise ValueError("token file is not valid UTF-8") from None
+    tokens = [line.strip() for line in text.splitlines() if line.strip()]
     if not tokens:
         raise ValueError("token file holds no tokens")
     return tokens
@@ -52,7 +56,7 @@ class ServiceTokenGate:
     def __init__(self, app: ASGIApp, tokens: Iterable[str]):
         self.app = app
         tokens = list(tokens)
-        if not all(tokens):
+        if not all(t.strip() for t in tokens):
             raise ValueError("empty service token")
         self.digests = [_digest(t) for t in tokens]
 

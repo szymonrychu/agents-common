@@ -80,8 +80,9 @@ def test_no_tokens_rejects_everything():
 
 
 def test_empty_configured_token_rejected_at_construction():
-    with pytest.raises(ValueError):
-        ServiceTokenGate(_inner(), [""])
+    for bad in ("", "  ", "\t\n"):
+        with pytest.raises(ValueError):
+            ServiceTokenGate(_inner(), [bad])
 
 
 def test_health_paths_exempt_for_get_and_head_only():
@@ -112,7 +113,7 @@ def test_compare_digest_used(monkeypatch):
 
     monkeypatch.setattr(service_gate.hmac, "compare_digest", spy)
     c = _client(TOKEN, OTHER)
-    c.get("/admin", headers=_auth(OTHER))
+    c.get("/admin", headers=_auth(TOKEN))
     assert len(calls) == 2  # every entry compared, no early exit
 
 
@@ -141,3 +142,15 @@ def test_load_tokens_empty_file_is_error(tmp_path):
 def test_load_tokens_missing_file_error_omits_contents(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_tokens(tmp_path / "absent")
+
+
+def test_load_tokens_non_utf8_error_leaks_no_bytes(tmp_path):
+    f = tmp_path / "tokens"
+    f.write_bytes(b"good\xfe\xfdsecret\n")
+    with pytest.raises(ValueError) as exc:
+        load_tokens(f)
+    text = f"{exc.value!s} {exc.value!r}"
+    assert "xfe" not in text.lower()
+    assert "secret" not in text
+    assert exc.value.__cause__ is None
+    assert exc.value.__suppress_context__
