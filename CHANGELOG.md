@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.6.0
+
+Service gate. No breaking change.
 
 - `service_gate`: `ServiceTokenGate` bearer service-token ASGI guard and `load_tokens`.
 
