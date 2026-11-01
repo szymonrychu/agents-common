@@ -14,3 +14,9 @@ Lessons that outlive a session. Newest first.
   `TemplateError(message, line)` covers syntax, size, timeout and runtime failures so `preview`
   can report `error{line,message}` without parsing strings; the line comes from the template frame
   in the traceback.
+- 2026-11-01: `UsageQuotaRefused.retry_at(now)` is `max(resets_at or now + retry_after or now + 300 s,
+  now) + 60 s`: the 60 s margin lets the usage window actually reset before the retry, the floor
+  keeps a stale `resets_at` from retrying at once, and the 300 s default matches the usage poll
+  period. It subclasses `OrchestratorError` (not `NotFound`) and `create_session` only adopts on
+  409 `conflict`, so the refusal reaches the trigger services untouched; malformed optional
+  fields in the 409 body parse to None rather than hiding the refusal.

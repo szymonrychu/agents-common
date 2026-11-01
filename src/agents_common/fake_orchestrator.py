@@ -31,6 +31,7 @@ class FakeOrchestrator:
         self.messages: dict[int, dict[str, Any]] = {}
         self.requests: list[Request] = []
         self._fail: dict[str, list[int]] = {}
+        self._usage_refusals: list[tuple[datetime, str, float, int]] = []
         self._next_message_id = 1
         self.app = Starlette(
             routes=[
@@ -136,6 +137,19 @@ class FakeOrchestrator:
         client, plus `list_sessions`/`create_session`/`list_messages`/`post_message`)."""
         self._fail.setdefault(route, []).append(status)
 
+    def refuse_usage(
+        self,
+        resets_at: datetime,
+        *,
+        metric: str = "seven_day",
+        percent: float = 90.0,
+        limit: int = 80,
+        times: int = 1,
+    ) -> None:
+        """Answer the next `times` create_session calls with the orchestrator's 409
+        `usage_quota` refusal (body and `Retry-After` header) and create nothing."""
+        self._usage_refusals.extend([(resets_at, metric, percent, limit)] * times)
+
     # plumbing ------------------------------------------------------------
 
     def _wrap(self, name: str, handler):
@@ -169,6 +183,8 @@ class FakeOrchestrator:
     async def _sessions(self, request: Request):
         if request.method == "GET":
             return JSONResponse(list(self.sessions.values()))
+        if self._usage_refusals:
+            return self._usage_refusal(*self._usage_refusals.pop(0))
         body = await request.json()
         preset_id, slug = body.get("preset_id"), body.get("slug")
         if preset_id not in self.presets:
@@ -186,6 +202,24 @@ class FakeOrchestrator:
         }
         self.sessions[sid] = session
         return JSONResponse(session, status_code=201)
+
+    @staticmethod
+    def _usage_refusal(resets_at: datetime, metric: str, percent: float, limit: int):
+        retry_after = max(1, int((resets_at - datetime.now(UTC)).total_seconds()))
+        body = {
+            "error": {
+                "code": "usage_quota",
+                "message": f"{metric} usage {percent}% is at or over the {limit}% limit",
+                "retry_after": retry_after,
+                "usage": {
+                    "metric": metric,
+                    "percent": percent,
+                    "limit": limit,
+                    "resets_at": resets_at.isoformat(),
+                },
+            }
+        }
+        return JSONResponse(body, status_code=409, headers={"Retry-After": str(retry_after)})
 
     async def _get_session(self, request: Request):
         session = self.sessions.get(request.path_params["id"])

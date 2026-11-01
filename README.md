@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.6.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.7.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.6.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.7.0`.
 
 ## `settings`
 
@@ -48,7 +48,8 @@ Client of the agents-orchestrator session API (`/api/v1/sessions`, `/api/v1/sess
 
 Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_messages`,
 `post_message`, `get_message`, `list_presets`, `get_preset`), `Preset`, `Session`, `Turn`,
-`Message` (`session_id`, `command`), `CommandOutcome`, `OrchestratorError`, `NotFound`, `OrchestratorUnavailable`.
+`Message` (`session_id`, `command`), `CommandOutcome`, `OrchestratorError`, `NotFound`,
+`UsageQuotaRefused`, `OrchestratorUnavailable`.
 `Preset.spec` is the sparse preset spec and `Preset.reuse_running_agent` its optional
 agent-reuse flag; `Session.status` is the session status document. `Message.command` is a
 command message's outcome (`state` completed, failed or cancelled, `result`, `error`,
@@ -60,6 +61,12 @@ command message's outcome (`state` completed, failed or cancelled, `result`, `er
         session = await client.create_session(preset_id, "run-42")  # idempotent on slug
         await client.post_message(session.id, "hello")
 
+`create_session` raises `UsageQuotaRefused` (an `OrchestratorError`, 409 code `usage_quota`) when
+the Claude usage gate refuses a new session. It carries `metric`, `percent`, `limit`,
+`resets_at` and `retry_after` (the body's `error.retry_after`, else the `Retry-After` header; each
+None when absent). `retry_at(now)` is when to try again: `resets_at` (else `now + retry_after`,
+else `now + 300 s`) plus 60 s, never earlier than `now + 60 s`. Needs agents-orchestrator 3.1.0.
+
 ## `fake_orchestrator`
 
 Public names: `FakeOrchestrator` (an in-process ASGI app speaking the agents-orchestrator
@@ -70,6 +77,9 @@ Helpers: `add_preset(name, is_default=False, spec=None)`, `mark_sent(message_id)
 `complete_command(message_id, result="ok", turn_id=None)` and
 `fail_command(message_id, error, state="failed")` (`state` `failed` or `cancelled`; both mark the
 message `sent` with that command outcome),
+`refuse_usage(resets_at, *, metric="seven_day", percent=90.0, limit=80, times=1)` (the next
+`times` `create_session` calls answer the 409 `usage_quota` refusal with a `Retry-After` header
+and create nothing),
 `fail_next(route, status)` (route labels are client method names plus `list_sessions`,
 `create_session`, `get_session`).
 
@@ -89,6 +99,9 @@ Public names: `dispatch`, `post_update`, `running_session`, `deliver`, `track_de
 
     run = await dispatch(client, store, run, text, marker("webhook", run.id))
     # safe to call again after a crash: no second session, no second message
+
+`dispatch` lets `UsageQuotaRefused` propagate and finishes nothing: the run stays in progress
+for the caller to hold until `exc.retry_at(now)`.
 
 Agent reuse: `running_session(client, session_id)` returns the session only while it exists
 with desired `active`. `deliver(...)` posts like `post_update` but returns None (run left open)

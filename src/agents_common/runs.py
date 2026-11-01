@@ -65,7 +65,9 @@ async def dispatch(
     """Create the run's session and post its prompt, each step at most once.
 
     A missing preset or session finishes the run failed (`preset_not_found`,
-    `session_not_found`) and re-raises the NotFound; other agents-orchestrator errors propagate.
+    `session_not_found`) and re-raises the NotFound; other agents-orchestrator errors propagate,
+    among them `UsageQuotaRefused` (the usage gate refused the session): nothing is finished and
+    the run is left as it was, so the caller can hold it until `retry_at`.
     """
     session_id = run.session_id
     if session_id is None:
