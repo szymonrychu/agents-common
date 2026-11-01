@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -9,9 +10,11 @@ from agents_common.orchestrator import (
     OrchestratorClient,
     OrchestratorError,
     OrchestratorUnavailable,
+    UsageQuotaRefused,
 )
 
 TOKEN = "tok-123"
+NOW = datetime(2026, 11, 1, 12, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -226,3 +229,86 @@ async def test_session_routes(fake):
         ("GET", f"/api/v1/sessions/{sid}/messages"),
     ]
     assert set(fake.sessions) == {sid}
+
+
+async def test_usage_quota_parsed(fake):
+    preset = fake.add_preset("p")
+    fake.refuse_usage(NOW + timedelta(hours=2))
+    async with make_client(fake) as client:
+        with pytest.raises(UsageQuotaRefused) as ei:
+            await client.create_session(preset.id, "q")
+    exc = ei.value
+    assert exc.status == 409
+    assert exc.code == "usage_quota"
+    assert exc.metric == "seven_day"
+    assert exc.percent == 90.0
+    assert exc.limit == 80
+    assert exc.resets_at == NOW + timedelta(hours=2)
+    assert exc.retry_after is not None
+    assert exc.retry_after > 0
+    assert isinstance(exc, OrchestratorError)
+    assert not isinstance(exc, NotFound)
+    assert fake.sessions == {}
+
+
+async def test_usage_quota_retry_after_falls_back_to_header():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            409,
+            json={"error": {"code": "usage_quota", "message": "over"}},
+            headers={"Retry-After": "90"},
+        )
+
+    client = OrchestratorClient("http://orch", TOKEN, transport=httpx.MockTransport(handler))
+    async with client:
+        with pytest.raises(UsageQuotaRefused) as ei:
+            await client.create_session(uuid.uuid4(), "q")
+    assert ei.value.retry_after == 90
+    assert ei.value.metric is None
+    assert ei.value.percent is None
+    assert ei.value.limit is None
+    assert ei.value.resets_at is None
+
+
+async def test_plain_409_is_not_usage(fake):
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        await client.create_session(preset.id, "same")
+        fake.fail_next("create_session", 409)
+        fake.sessions.clear()
+        with pytest.raises(OrchestratorError) as ei:
+            await client.create_session(preset.id, "same")
+    assert not isinstance(ei.value, UsageQuotaRefused)
+
+
+def _refused(**kwargs) -> UsageQuotaRefused:
+    return UsageQuotaRefused(409, "usage_quota", "over quota", **kwargs)
+
+
+def test_retry_at_uses_resets_at():
+    exc = _refused(resets_at=NOW + timedelta(hours=2), retry_after=7200)
+    assert exc.retry_at(NOW) == NOW + timedelta(hours=2, seconds=60)
+
+
+def test_retry_at_from_retry_after():
+    assert _refused(retry_after=120).retry_at(NOW) == NOW + timedelta(seconds=180)
+
+
+def test_retry_at_default():
+    assert _refused().retry_at(NOW) == NOW + timedelta(seconds=360)
+
+
+def test_retry_at_never_in_past():
+    assert _refused(resets_at=NOW - timedelta(hours=1)).retry_at(NOW) == NOW + timedelta(seconds=60)
+
+
+async def test_refuse_usage_times(fake):
+    preset = fake.add_preset("p")
+    fake.refuse_usage(NOW + timedelta(hours=1), times=2)
+    async with make_client(fake) as client:
+        for _ in range(2):
+            with pytest.raises(UsageQuotaRefused):
+                await client.create_session(preset.id, "q")
+        assert fake.sessions == {}
+        session = await client.create_session(preset.id, "q")
+    assert session.slug == "q"

@@ -10,7 +10,12 @@ import httpx
 import pytest
 
 from agents_common.fake_orchestrator import FakeOrchestrator
-from agents_common.orchestrator import NotFound, OrchestratorClient, OrchestratorUnavailable
+from agents_common.orchestrator import (
+    NotFound,
+    OrchestratorClient,
+    OrchestratorUnavailable,
+    UsageQuotaRefused,
+)
 from agents_common.runs import (
     PresetBinding,
     RunRef,
@@ -263,6 +268,15 @@ async def test_dispatch_preset_not_found_fails_the_run(fake, client, store, run)
         await dispatch(client, store, gone, "x", MARK)
     assert store.rows[1]["status"] == "failed"
     assert store.rows[1]["reason"] == "preset_not_found"
+    assert fake.sessions == {}
+
+
+async def test_dispatch_propagates_usage(fake, client, store, run):
+    fake.refuse_usage(T0 + timedelta(hours=2))
+    with pytest.raises(UsageQuotaRefused):
+        await dispatch(client, store, run, "do it", MARK)
+    assert [name for name, _ in store.calls] == []
+    assert store.rows[run.id]["status"] == "in-progress"
     assert fake.sessions == {}
 
 

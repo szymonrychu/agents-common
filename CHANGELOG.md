@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.0
+
+Usage quota refusals. Needs agents-orchestrator 3.1.0 for the refusal; no breaking change.
+
+- `orchestrator`: `UsageQuotaRefused` (an `OrchestratorError`: `metric`, `percent`, `limit`, `resets_at`, `retry_after`, `retry_at(now)`), returned for a 409 `usage_quota`.
+- `runs`: `dispatch` lets `UsageQuotaRefused` propagate and finishes nothing.
+- `fake_orchestrator`: `refuse_usage`.
+
 ## v0.6.0
 
 Service gate. No breaking change.

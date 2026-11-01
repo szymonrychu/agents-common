@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from collections.abc import Callable
+from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Any, Self
 
@@ -26,6 +27,51 @@ class OrchestratorError(Exception):
 
 class NotFound(OrchestratorError):
     """404 from agents-orchestrator."""
+
+
+_RETRY_MARGIN = timedelta(seconds=60)
+_RETRY_DEFAULT = timedelta(seconds=300)
+
+
+class UsageQuotaRefused(OrchestratorError):
+    """409 `usage_quota`: the Claude usage gate refused a new session.
+
+    `metric` is the gating metric, `percent` its current usage, `limit` the threshold,
+    `resets_at` when the window resets and `retry_after` the advised wait in seconds; each is
+    None when the orchestrator did not send it.
+    """
+
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        *,
+        metric: str | None = None,
+        percent: float | None = None,
+        limit: int | None = None,
+        resets_at: datetime | None = None,
+        retry_after: int | None = None,
+    ):
+        super().__init__(status, code, message)
+        self.metric = metric
+        self.percent = percent
+        self.limit = limit
+        self.resets_at = resets_at
+        self.retry_after = retry_after
+
+    def retry_at(self, now: datetime) -> datetime:
+        """When to try again: the window reset (else `now` + `retry_after`, else 300 s) plus a
+        60 s margin, and never earlier than `now` + 60 s."""
+        if self.resets_at is not None:
+            base = self.resets_at
+        else:
+            base = now + (
+                timedelta(seconds=self.retry_after)
+                if self.retry_after is not None
+                else _RETRY_DEFAULT
+            )
+        return max(base, now) + _RETRY_MARGIN
 
 
 class OrchestratorUnavailable(Exception):
@@ -185,5 +231,34 @@ def _error_from(resp: httpx.Response) -> OrchestratorError:
         code, message = str(err["code"]), str(err["message"])
     except (ValueError, KeyError, TypeError):
         pass
+    if resp.status_code == 409 and code == "usage_quota":
+        return _usage_quota_from(resp, message)
     cls = NotFound if resp.status_code == 404 else OrchestratorError
     return cls(resp.status_code, code, message)
+
+
+def _usage_quota_from(resp: httpx.Response, message: str) -> UsageQuotaRefused:
+    err = resp.json()["error"]
+    usage = err.get("usage")
+    if not isinstance(usage, dict):
+        usage = {}
+    return UsageQuotaRefused(
+        resp.status_code,
+        "usage_quota",
+        message,
+        metric=_field(str, usage.get("metric")),
+        percent=_field(float, usage.get("percent")),
+        limit=_field(int, usage.get("limit")),
+        resets_at=_field(datetime.fromisoformat, usage.get("resets_at")),
+        retry_after=_field(int, err.get("retry_after", resp.headers.get("Retry-After"))),
+    )
+
+
+def _field[T](parse: Callable[[Any], T], value: Any) -> T | None:
+    """`parse(value)`, or None when the value is absent or malformed."""
+    if value is None:
+        return None
+    try:
+        return parse(value)
+    except (TypeError, ValueError):
+        return None
