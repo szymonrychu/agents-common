@@ -433,3 +433,13 @@ async def test_download_file_5xx_unavailable(fake):
         with pytest.raises(OrchestratorUnavailable):
             await client.download_file(session.id, "a.txt")
         assert await client.download_file(session.id, "a.txt") == b"hi"
+
+
+async def test_list_sessions_parses(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        assert await client.list_sessions() == []
+        await client.create_session(preset.id, "s-a")
+        await client.create_session(preset.id, "s-b")
+        sessions = await client.list_sessions()
+    assert sorted(s.slug for s in sessions) == ["s-a", "s-b"]

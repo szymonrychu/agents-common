@@ -221,8 +221,7 @@ class OrchestratorClient:
         except OrchestratorError as exc:
             if exc.status != 409 or exc.code != "conflict":
                 raise
-            existing = _SESSIONS.validate_python(await self._request("GET", "/api/v1/sessions"))
-            for session in existing:
+            for session in await self.list_sessions():
                 if session.slug == slug:
                     return session
             raise
@@ -230,6 +229,9 @@ class OrchestratorClient:
 
     async def get_session(self, session_id: uuid.UUID | str) -> Session:
         return Session.model_validate(await self._request("GET", f"/api/v1/sessions/{session_id}"))
+
+    async def list_sessions(self) -> list[Session]:
+        return _SESSIONS.validate_python(await self._request("GET", "/api/v1/sessions"))
 
     async def list_messages(self, session_id: uuid.UUID | str) -> list[Message]:
         data = await self._request("GET", f"/api/v1/sessions/{session_id}/messages")

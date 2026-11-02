@@ -46,8 +46,8 @@ Public names: `advisory_singleton`, `run_service`, `lock_key`, `LostLock`.
 Client of the agents-orchestrator session API (`/api/v1/sessions`, `/api/v1/sessions/{id}`,
 `/api/v1/sessions/{id}/messages`).
 
-Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_messages`,
-`post_message`, `get_message`, `list_presets`, `get_preset`), `Preset`, `Session`, `Turn`,
+Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_sessions`,
+`list_messages`, `post_message`, `get_message`, `list_presets`, `get_preset`), `Preset`, `Session`, `Turn`,
 `Message` (`session_id`, `command`), `CommandOutcome`, `OrchestratorError`, `NotFound`,
 `UsageQuotaRefused`, `OrchestratorUnavailable`.
 `Preset.spec` is the sparse preset spec and `Preset.reuse_running_agent` its optional
