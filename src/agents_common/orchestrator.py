@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Any, Self
@@ -28,6 +30,8 @@ class OrchestratorError(Exception):
 class NotFound(OrchestratorError):
     """404 from agents-orchestrator."""
 
+
+DOWNLOAD_MAX_BYTES = 8388608
 
 _RETRY_MARGIN = timedelta(seconds=60)
 _RETRY_DEFAULT = timedelta(seconds=300)
@@ -120,6 +124,31 @@ class CommandOutcome(_Model):
     at: datetime | None = None
 
 
+class AttachmentMeta(_Model):
+    """Metadata of a message attachment as the orchestrator lists it (never the bytes)."""
+
+    name: str
+    mime: str
+    size: int
+    path: str
+
+
+@dataclass(frozen=True)
+class Attachment:
+    """A file sent along with a message: `data` is the raw content."""
+
+    name: str
+    mime: str
+    data: bytes
+
+    def to_json(self) -> dict[str, str]:
+        return {
+            "name": self.name,
+            "mime": self.mime,
+            "data_b64": base64.b64encode(self.data).decode("ascii"),
+        }
+
+
 class Message(_Model):
     id: int
     status: str
@@ -127,6 +156,7 @@ class Message(_Model):
     text: str | None = None
     turn: Turn | None = None
     command: CommandOutcome | None = None
+    attachments: list[AttachmentMeta] = []
 
 
 class _Accepted(_Model):
@@ -173,10 +203,7 @@ class OrchestratorClient:
             resp = await self._http.request(method, path, json=json)
         except httpx.HTTPError as exc:
             raise OrchestratorUnavailable(f"{method} {path}: {exc!r}") from exc
-        if resp.status_code >= 500:
-            raise OrchestratorUnavailable(f"{method} {path}: HTTP {resp.status_code}")
-        if resp.status_code >= 400:
-            raise _error_from(resp)
+        _raise_for_status(method, path, resp)
         return resp.json()
 
     async def list_presets(self) -> list[Preset]:
@@ -194,8 +221,7 @@ class OrchestratorClient:
         except OrchestratorError as exc:
             if exc.status != 409 or exc.code != "conflict":
                 raise
-            existing = _SESSIONS.validate_python(await self._request("GET", "/api/v1/sessions"))
-            for session in existing:
+            for session in await self.list_sessions():
                 if session.slug == slug:
                     return session
             raise
@@ -204,14 +230,23 @@ class OrchestratorClient:
     async def get_session(self, session_id: uuid.UUID | str) -> Session:
         return Session.model_validate(await self._request("GET", f"/api/v1/sessions/{session_id}"))
 
+    async def list_sessions(self) -> list[Session]:
+        return _SESSIONS.validate_python(await self._request("GET", "/api/v1/sessions"))
+
     async def list_messages(self, session_id: uuid.UUID | str) -> list[Message]:
         data = await self._request("GET", f"/api/v1/sessions/{session_id}/messages")
         return _MESSAGES.validate_python(data)
 
-    async def post_message(self, session_id: uuid.UUID | str, text: str) -> Message:
-        data = await self._request(
-            "POST", f"/api/v1/sessions/{session_id}/messages", {"text": text}
-        )
+    async def post_message(
+        self,
+        session_id: uuid.UUID | str,
+        text: str,
+        attachments: Sequence[Attachment] | None = None,
+    ) -> Message:
+        body: dict[str, Any] = {"text": text}
+        if attachments:
+            body["attachments"] = [a.to_json() for a in attachments]
+        data = await self._request("POST", f"/api/v1/sessions/{session_id}/messages", body)
         accepted = _Accepted.model_validate(data)
         return Message(
             id=accepted.message_id,
@@ -220,8 +255,50 @@ class OrchestratorClient:
             text=text,
         )
 
+    async def download_file(
+        self,
+        session_id: uuid.UUID | str,
+        path: str,
+        agent_id: uuid.UUID | str | None = None,
+        *,
+        max_bytes: int = DOWNLOAD_MAX_BYTES,
+    ) -> bytes:
+        """Fetch a file the agent wrote in its session workdir. A file over `max_bytes` raises
+        `OrchestratorError(413, "too_large")` and the rest of the body is not read."""
+        url = f"/api/v1/sessions/{session_id}/files/download"
+        params = {"path": path}
+        if agent_id is not None:
+            params["agent_id"] = str(agent_id)
+        try:
+            async with self._http.stream("GET", url, params=params) as resp:
+                if resp.status_code >= 400:
+                    await resp.aread()
+                _raise_for_status("GET", url, resp)
+                declared = resp.headers.get("Content-Length")
+                if declared is not None and declared.isdigit() and int(declared) > max_bytes:
+                    raise _too_large(max_bytes)
+                body = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    body += chunk
+                    if len(body) > max_bytes:
+                        raise _too_large(max_bytes)
+                return bytes(body)
+        except httpx.HTTPError as exc:
+            raise OrchestratorUnavailable(f"GET {url}: {exc!r}") from exc
+
     async def get_message(self, message_id: int) -> Message:
         return Message.model_validate(await self._request("GET", f"/api/v1/messages/{message_id}"))
+
+
+def _raise_for_status(method: str, path: str, resp: httpx.Response) -> None:
+    if resp.status_code >= 500:
+        raise OrchestratorUnavailable(f"{method} {path}: HTTP {resp.status_code}")
+    if resp.status_code >= 400:
+        raise _error_from(resp)
+
+
+def _too_large(max_bytes: int) -> OrchestratorError:
+    return OrchestratorError(413, "too_large", f"file is larger than {max_bytes} bytes")
 
 
 def _error_from(resp: httpx.Response) -> OrchestratorError:

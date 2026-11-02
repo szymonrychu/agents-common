@@ -9,11 +9,13 @@ already stored and a message carrying the marker is adopted instead of posting a
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal, Protocol, runtime_checkable
 
 from agents_common.orchestrator import (
+    Attachment,
     NotFound,
     OrchestratorClient,
     OrchestratorError,
@@ -60,7 +62,12 @@ def marker(run_kind: str, run_id: RunId) -> str:
 
 
 async def dispatch(
-    client: OrchestratorClient, store: RunStore, run: RunRef, text: str, marker: str
+    client: OrchestratorClient,
+    store: RunStore,
+    run: RunRef,
+    text: str,
+    marker: str,
+    attachments: Sequence[Attachment] | None = None,
 ) -> RunRef:
     """Create the run's session and post its prompt, each step at most once.
 
@@ -79,7 +86,7 @@ async def dispatch(
         session_id = str(session.id)
         await store.set_session(run.id, session_id)
         run = dataclasses.replace(run, session_id=session_id)
-    return await _post_once(client, store, run, session_id, text, marker)
+    return await _post_once(client, store, run, session_id, text, marker, attachments)
 
 
 async def post_update(
@@ -89,12 +96,13 @@ async def post_update(
     session_id: str,
     text: str,
     marker: str,
+    attachments: Sequence[Attachment] | None = None,
 ) -> RunRef:
     """Post `text` to an existing session with the same adopt-before-post rule."""
     if run.session_id is None:
         await store.set_session(run.id, session_id)
         run = dataclasses.replace(run, session_id=session_id)
-    return await _post_once(client, store, run, session_id, text, marker)
+    return await _post_once(client, store, run, session_id, text, marker, attachments)
 
 
 async def running_session(client: OrchestratorClient, session_id: str) -> Session | None:
@@ -116,6 +124,7 @@ async def deliver(
     session_id: str,
     text: str,
     marker: str,
+    attachments: Sequence[Attachment] | None = None,
 ) -> RunRef | None:
     """Like `post_update`, but a gone session returns None and leaves the run open.
 
@@ -126,7 +135,9 @@ async def deliver(
         await store.set_session(run.id, session_id)
         run = dataclasses.replace(run, session_id=session_id)
     try:
-        return await _post_once(client, store, run, session_id, text, marker, fail_run=False)
+        return await _post_once(
+            client, store, run, session_id, text, marker, attachments, fail_run=False
+        )
     except NotFound:
         return None
     except OrchestratorError as exc:
@@ -142,6 +153,7 @@ async def _post_once(
     session_id: str,
     text: str,
     marker: str,
+    attachments: Sequence[Attachment] | None = None,
     *,
     fail_run: bool = True,
 ) -> RunRef:
@@ -150,7 +162,9 @@ async def _post_once(
     try:
         existing = await client.list_messages(session_id)
         adopted = next((m for m in existing if m.text and marker in m.text), None)
-        message = adopted or await client.post_message(session_id, f"{text}\n\n{marker}")
+        message = adopted or await client.post_message(
+            session_id, f"{text}\n\n{marker}", attachments=attachments
+        )
     except NotFound:
         if fail_run:
             await store.finish(run.id, "failed", "session_not_found")

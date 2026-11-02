@@ -6,6 +6,7 @@ import pytest
 
 from agents_common.fake_orchestrator import FakeOrchestrator
 from agents_common.orchestrator import (
+    Attachment,
     NotFound,
     OrchestratorClient,
     OrchestratorError,
@@ -205,6 +206,7 @@ SESSION_ROUTES = {
     "/api/v1/sessions",
     "/api/v1/sessions/{id}",
     "/api/v1/sessions/{id}/messages",
+    "/api/v1/sessions/{id}/files/download",
     "/api/v1/messages/{id}",
 }
 
@@ -312,3 +314,132 @@ async def test_refuse_usage_times(fake):
         assert fake.sessions == {}
         session = await client.create_session(preset.id, "q")
     assert session.slug == "q"
+
+
+def test_attachment_to_json():
+    att = Attachment("a.png", "image/png", b"\x89PNG")
+    assert att.to_json() == {"name": "a.png", "mime": "image/png", "data_b64": "iVBORw=="}
+
+
+async def test_post_message_with_attachments(fake):
+    preset = fake.add_preset("default", is_default=True)
+    att = Attachment("a.png", "image/png", b"\x89PNG")
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        posted = await client.post_message(session.id, "see", attachments=[att])
+        assert fake.attachments[posted.id] == [att]
+        meta = {
+            "name": "a.png",
+            "mime": "image/png",
+            "size": 4,
+            "path": ".attachments/orch-1/a.png",
+        }
+        assert fake.messages[posted.id]["attachments"] == [meta]
+        got = await client.get_message(posted.id)
+        assert [a.model_dump() for a in got.attachments] == [meta]
+        listed = await client.list_messages(session.id)
+        assert [a.model_dump() for a in listed[0].attachments] == [meta]
+
+
+async def test_post_message_without_attachments_sends_no_key(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        posted = await client.post_message(session.id, "plain")
+        await client.post_message(session.id, "empty", attachments=[])
+        got = await client.get_message(posted.id)
+    assert got.attachments == []
+    for req in fake.requests[-3:-1]:
+        assert "attachments" not in await req.json()
+
+
+async def test_post_message_invalid_base64_is_422(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        resp = await client._http.post(
+            f"/api/v1/sessions/{session.id}/messages",
+            json={
+                "text": "x",
+                "attachments": [{"name": "a.png", "mime": "image/png", "data_b64": "!!"}],
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "invalid_attachment"
+
+
+async def test_download_file_returns_bytes(fake):
+    preset = fake.add_preset("default", is_default=True)
+    data = bytes(range(256))
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        fake.put_file(str(session.id), "out/a.bin", data)
+        assert await client.download_file(session.id, "out/a.bin") == data
+    assert fake.requests[-1].query_params["path"] == "out/a.bin"
+    assert fake.downloads == [(str(session.id), "out/a.bin", None)]
+
+
+async def test_download_file_passes_agent_id(fake):
+    preset = fake.add_preset("default", is_default=True)
+    agent_id = uuid.uuid4()
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        fake.put_file(str(session.id), "a.txt", b"hi")
+        await client.download_file(session.id, "a.txt", agent_id)
+    assert fake.downloads == [(str(session.id), "a.txt", str(agent_id))]
+
+
+async def test_download_file_missing_is_not_found(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        with pytest.raises(NotFound):
+            await client.download_file(session.id, "nope.txt")
+
+
+async def test_download_file_over_cap_raises_413(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        fake.put_file(str(session.id), "a.bin", b"abcd")
+        with pytest.raises(OrchestratorError) as info:
+            await client.download_file(session.id, "a.bin", max_bytes=3)
+    assert (info.value.status, info.value.code) == (413, "too_large")
+
+
+async def test_download_file_growing_body_raises_413():
+    class Chunks(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for _ in range(10):
+                yield b"abcd"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=Chunks())
+
+    client = OrchestratorClient("http://orch", TOKEN, transport=httpx.MockTransport(handler))
+    async with client:
+        with pytest.raises(OrchestratorError) as info:
+            await client.download_file("s", "a.bin", max_bytes=10)
+    assert info.value.status == 413
+
+
+async def test_download_file_5xx_unavailable(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        fake.put_file(str(session.id), "a.txt", b"hi")
+        fake.fail_next("download_file", 503)
+        with pytest.raises(OrchestratorUnavailable):
+            await client.download_file(session.id, "a.txt")
+        assert await client.download_file(session.id, "a.txt") == b"hi"
+
+
+async def test_list_sessions_parses(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        assert await client.list_sessions() == []
+        await client.create_session(preset.id, "s-a")
+        await client.create_session(preset.id, "s-b")
+        sessions = await client.list_sessions()
+    assert sorted(s.slug for s in sessions) == ["s-a", "s-b"]

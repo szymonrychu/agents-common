@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.7.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.8.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.7.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.8.0`.
 
 ## `settings`
 
@@ -46,9 +46,9 @@ Public names: `advisory_singleton`, `run_service`, `lock_key`, `LostLock`.
 Client of the agents-orchestrator session API (`/api/v1/sessions`, `/api/v1/sessions/{id}`,
 `/api/v1/sessions/{id}/messages`).
 
-Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_messages`,
-`post_message`, `get_message`, `list_presets`, `get_preset`), `Preset`, `Session`, `Turn`,
-`Message` (`session_id`, `command`), `CommandOutcome`, `OrchestratorError`, `NotFound`,
+Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_sessions`,
+`list_messages`, `post_message`, `get_message`, `download_file`, `list_presets`, `get_preset`), `Attachment`, `AttachmentMeta`, `Preset`, `Session`, `Turn`,
+`Message` (`session_id`, `command`, `attachments`), `CommandOutcome`, `OrchestratorError`, `NotFound`,
 `UsageQuotaRefused`, `OrchestratorUnavailable`.
 `Preset.spec` is the sparse preset spec and `Preset.reuse_running_agent` its optional
 agent-reuse flag; `Session.status` is the session status document. `Message.command` is a
@@ -67,6 +67,13 @@ the Claude usage gate refuses a new session. It carries `metric`, `percent`, `li
 None when absent). `retry_at(now)` is when to try again: `resets_at` (else `now + retry_after`,
 else `now + 300 s`) plus 60 s, never earlier than `now + 60 s`. Needs agents-orchestrator 3.1.0.
 
+`post_message(session_id, text, attachments=[Attachment(name, mime, data)])` sends files with a
+message; `data` is raw bytes and the client base64-encodes it. `Message.attachments` lists
+`AttachmentMeta` (`name`, `mime`, `size`, `path`), never the bytes.
+`download_file(session_id, path, agent_id=None, max_bytes=8388608)` returns the bytes of a file the
+agent wrote in its workdir; it streams and raises `OrchestratorError(413, "too_large")` as soon as
+the body passes `max_bytes`. `list_sessions()` returns every `Session`.
+
 ## `fake_orchestrator`
 
 Public names: `FakeOrchestrator` (an in-process ASGI app speaking the agents-orchestrator
@@ -80,8 +87,10 @@ message `sent` with that command outcome),
 `refuse_usage(resets_at, *, metric="seven_day", percent=90.0, limit=80, times=1)` (the next
 `times` `create_session` calls answer the 409 `usage_quota` refusal with a `Retry-After` header
 and create nothing),
+`put_file(session_id, path, data)` (makes it downloadable), the `attachments`, `files` and
+`downloads` stores,
 `fail_next(route, status)` (route labels are client method names plus `list_sessions`,
-`create_session`, `get_session`).
+`create_session`, `get_session`, `download_file`).
 
     from agents_common.fake_orchestrator import FakeOrchestrator
 
@@ -99,6 +108,9 @@ Public names: `dispatch`, `post_update`, `running_session`, `deliver`, `track_de
 
     run = await dispatch(client, store, run, text, marker("webhook", run.id))
     # safe to call again after a crash: no second session, no second message
+
+`dispatch`, `post_update` and `deliver` take an optional `attachments` list and pass it to
+`post_message`.
 
 `dispatch` lets `UsageQuotaRefused` propagate and finishes nothing: the run stays in progress
 for the caller to hold until `exc.retry_at(now)`.
