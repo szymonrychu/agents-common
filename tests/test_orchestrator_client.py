@@ -6,6 +6,7 @@ import pytest
 
 from agents_common.fake_orchestrator import FakeOrchestrator
 from agents_common.orchestrator import (
+    Attachment,
     NotFound,
     OrchestratorClient,
     OrchestratorError,
@@ -312,3 +313,56 @@ async def test_refuse_usage_times(fake):
         assert fake.sessions == {}
         session = await client.create_session(preset.id, "q")
     assert session.slug == "q"
+
+
+def test_attachment_to_json():
+    att = Attachment("a.png", "image/png", b"\x89PNG")
+    assert att.to_json() == {"name": "a.png", "mime": "image/png", "data_b64": "iVBORw=="}
+
+
+async def test_post_message_with_attachments(fake):
+    preset = fake.add_preset("default", is_default=True)
+    att = Attachment("a.png", "image/png", b"\x89PNG")
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        posted = await client.post_message(session.id, "see", attachments=[att])
+        assert fake.attachments[posted.id] == [att]
+        meta = {
+            "name": "a.png",
+            "mime": "image/png",
+            "size": 4,
+            "path": ".attachments/orch-1/a.png",
+        }
+        assert fake.messages[posted.id]["attachments"] == [meta]
+        got = await client.get_message(posted.id)
+        assert [a.model_dump() for a in got.attachments] == [meta]
+        listed = await client.list_messages(session.id)
+        assert [a.model_dump() for a in listed[0].attachments] == [meta]
+
+
+async def test_post_message_without_attachments_sends_no_key(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        posted = await client.post_message(session.id, "plain")
+        await client.post_message(session.id, "empty", attachments=[])
+        got = await client.get_message(posted.id)
+    assert got.attachments == []
+    for req in fake.requests[-3:-1]:
+        assert "attachments" not in await req.json()
+
+
+async def test_post_message_invalid_base64_is_422(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        resp = await client._http.post(
+            f"/api/v1/sessions/{session.id}/messages",
+            json={
+                "text": "x",
+                "attachments": [{"name": "a.png", "mime": "image/png", "data_b64": "!!"}],
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "invalid_attachment"

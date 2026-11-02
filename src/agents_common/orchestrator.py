@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Any, Self
@@ -120,6 +122,31 @@ class CommandOutcome(_Model):
     at: datetime | None = None
 
 
+class AttachmentMeta(_Model):
+    """Metadata of a message attachment as the orchestrator lists it (never the bytes)."""
+
+    name: str
+    mime: str
+    size: int
+    path: str
+
+
+@dataclass(frozen=True)
+class Attachment:
+    """A file sent along with a message: `data` is the raw content."""
+
+    name: str
+    mime: str
+    data: bytes
+
+    def to_json(self) -> dict[str, str]:
+        return {
+            "name": self.name,
+            "mime": self.mime,
+            "data_b64": base64.b64encode(self.data).decode("ascii"),
+        }
+
+
 class Message(_Model):
     id: int
     status: str
@@ -127,6 +154,7 @@ class Message(_Model):
     text: str | None = None
     turn: Turn | None = None
     command: CommandOutcome | None = None
+    attachments: list[AttachmentMeta] = []
 
 
 class _Accepted(_Model):
@@ -208,10 +236,16 @@ class OrchestratorClient:
         data = await self._request("GET", f"/api/v1/sessions/{session_id}/messages")
         return _MESSAGES.validate_python(data)
 
-    async def post_message(self, session_id: uuid.UUID | str, text: str) -> Message:
-        data = await self._request(
-            "POST", f"/api/v1/sessions/{session_id}/messages", {"text": text}
-        )
+    async def post_message(
+        self,
+        session_id: uuid.UUID | str,
+        text: str,
+        attachments: Sequence[Attachment] | None = None,
+    ) -> Message:
+        body: dict[str, Any] = {"text": text}
+        if attachments:
+            body["attachments"] = [a.to_json() for a in attachments]
+        data = await self._request("POST", f"/api/v1/sessions/{session_id}/messages", body)
         accepted = _Accepted.model_validate(data)
         return Message(
             id=accepted.message_id,

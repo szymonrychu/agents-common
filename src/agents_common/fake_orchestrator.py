@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -10,6 +12,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
+
+from agents_common.orchestrator import Attachment
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -29,6 +33,7 @@ class FakeOrchestrator:
         self.presets: dict[str, dict[str, Any]] = {}
         self.sessions: dict[str, dict[str, Any]] = {}
         self.messages: dict[int, dict[str, Any]] = {}
+        self.attachments: dict[int, list[Attachment]] = {}
         self.requests: list[Request] = []
         self._fail: dict[str, list[int]] = {}
         self._usage_refusals: list[tuple[datetime, str, float, int]] = []
@@ -236,8 +241,17 @@ class FakeOrchestrator:
         if self.sessions[sid]["desired"] == "deleting":
             return _error(409, "session_deleting", "session is being deleted")
         body = await request.json()
+        try:
+            atts = [
+                Attachment(a["name"], a["mime"], base64.b64decode(a["data_b64"], validate=True))
+                for a in body.get("attachments", [])
+            ]
+        except (binascii.Error, KeyError, TypeError, ValueError):
+            return _error(422, "invalid_attachment", "attachment is malformed")
         mid = self._next_message_id
         self._next_message_id += 1
+        if atts:
+            self.attachments[mid] = atts
         self.messages[mid] = {
             "id": mid,
             "session_id": sid,
@@ -247,6 +261,15 @@ class FakeOrchestrator:
             "created_at": _now(),
             "turn": None,
             "command": None,
+            "attachments": [
+                {
+                    "name": a.name,
+                    "mime": a.mime,
+                    "size": len(a.data),
+                    "path": f".attachments/orch-{mid}/{a.name}",
+                }
+                for a in atts
+            ],
         }
         return JSONResponse({"message_id": mid, "status": "queued"}, status_code=202)
 
