@@ -20,3 +20,8 @@ Lessons that outlive a session. Newest first.
   period. It subclasses `OrchestratorError` (not `NotFound`) and `create_session` only adopts on
   409 `conflict`, so the refusal reaches the trigger services untouched; malformed optional
   fields in the 409 body parse to None rather than hiding the refusal.
+- 2026-11-02: `Attachment` is a frozen dataclass holding raw `bytes` and the client does the
+  base64 encoding (`to_json`), so callers never handle the wire format and the fake can compare
+  real bytes. `download_file` streams with a cap (`max_bytes`, default 8 MiB) and aborts at the
+  first chunk past it (also on a declared Content-Length), so an agent-written huge file cannot
+  exhaust memory; the cap surfaces as `OrchestratorError(413, "too_large")`.

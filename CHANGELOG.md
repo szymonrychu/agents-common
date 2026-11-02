@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.8.0
+
+Message attachments and file download. Needs an agents-orchestrator with attachments and the file download route. No breaking change.
+
+- `orchestrator`: `Attachment` (`name`, `mime`, `data` bytes; the client base64-encodes it), `OrchestratorClient.post_message(..., attachments=)`, `Message.attachments` (`AttachmentMeta`: `name`, `mime`, `size`, `path`).
+- `orchestrator`: `OrchestratorClient.download_file(session_id, path, agent_id=None, max_bytes=)` streams a file the agent wrote, raising `OrchestratorError(413, "too_large")` over the cap (default 8 MiB).
+- `orchestrator`: `OrchestratorClient.list_sessions()`.
+- `runs`: `dispatch`, `post_update` and `deliver` pass an `attachments` keyword through to `post_message`.
+- `fake_orchestrator`: stores posted attachments (`attachments`), serves downloads (`files`, `downloads`) and routes `download_file` through `fail_next`.
+
 ## v0.7.0
 
 Usage quota refusals. Needs agents-orchestrator 3.1.0 for the refusal; no breaking change.
