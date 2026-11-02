@@ -10,7 +10,7 @@ from typing import Any
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from agents_common.orchestrator import Attachment
@@ -34,6 +34,8 @@ class FakeOrchestrator:
         self.sessions: dict[str, dict[str, Any]] = {}
         self.messages: dict[int, dict[str, Any]] = {}
         self.attachments: dict[int, list[Attachment]] = {}
+        self.files: dict[tuple[str, str], bytes] = {}
+        self.downloads: list[tuple[str, str, str | None]] = []
         self.requests: list[Request] = []
         self._fail: dict[str, list[int]] = {}
         self._usage_refusals: list[tuple[datetime, str, float, int]] = []
@@ -52,6 +54,10 @@ class FakeOrchestrator:
                     "/api/v1/sessions/{id}/messages",
                     self._wrap("messages", self._messages),
                     methods=["GET", "POST"],
+                ),
+                Route(
+                    "/api/v1/sessions/{id}/files/download",
+                    self._wrap("download_file", self._download_file),
                 ),
                 Route("/api/v1/messages/{id}", self._wrap("get_message", self._get_message)),
             ]
@@ -72,6 +78,10 @@ class FakeOrchestrator:
             "updated_at": _now(),
         }
         return _PresetRef(uuid.UUID(pid), name)
+
+    def put_file(self, session_id: str, path: str, data: bytes) -> None:
+        """Make `path` downloadable from the session's workdir."""
+        self.files[(str(session_id), path)] = data
 
     def mark_sent(self, message_id: int) -> None:
         self.messages[message_id]["status"] = "sent"
@@ -272,6 +282,16 @@ class FakeOrchestrator:
             ],
         }
         return JSONResponse({"message_id": mid, "status": "queued"}, status_code=202)
+
+    async def _download_file(self, request: Request):
+        sid = request.path_params["id"]
+        path = request.query_params.get("path", "")
+        agent_id = request.query_params.get("agent_id")
+        self.downloads.append((sid, path, agent_id))
+        data = self.files.get((sid, path))
+        if sid not in self.sessions or data is None:
+            return _error(404, "not_found", "file not found")
+        return Response(data, media_type="application/octet-stream")
 
     async def _get_message(self, request: Request):
         try:

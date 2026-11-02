@@ -206,6 +206,7 @@ SESSION_ROUTES = {
     "/api/v1/sessions",
     "/api/v1/sessions/{id}",
     "/api/v1/sessions/{id}/messages",
+    "/api/v1/sessions/{id}/files/download",
     "/api/v1/messages/{id}",
 }
 
@@ -366,3 +367,69 @@ async def test_post_message_invalid_base64_is_422(fake):
         )
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "invalid_attachment"
+
+
+async def test_download_file_returns_bytes(fake):
+    preset = fake.add_preset("default", is_default=True)
+    data = bytes(range(256))
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        fake.put_file(str(session.id), "out/a.bin", data)
+        assert await client.download_file(session.id, "out/a.bin") == data
+    assert fake.requests[-1].query_params["path"] == "out/a.bin"
+    assert fake.downloads == [(str(session.id), "out/a.bin", None)]
+
+
+async def test_download_file_passes_agent_id(fake):
+    preset = fake.add_preset("default", is_default=True)
+    agent_id = uuid.uuid4()
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        fake.put_file(str(session.id), "a.txt", b"hi")
+        await client.download_file(session.id, "a.txt", agent_id)
+    assert fake.downloads == [(str(session.id), "a.txt", str(agent_id))]
+
+
+async def test_download_file_missing_is_not_found(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        with pytest.raises(NotFound):
+            await client.download_file(session.id, "nope.txt")
+
+
+async def test_download_file_over_cap_raises_413(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        fake.put_file(str(session.id), "a.bin", b"abcd")
+        with pytest.raises(OrchestratorError) as info:
+            await client.download_file(session.id, "a.bin", max_bytes=3)
+    assert (info.value.status, info.value.code) == (413, "too_large")
+
+
+async def test_download_file_growing_body_raises_413():
+    class Chunks(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for _ in range(10):
+                yield b"abcd"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=Chunks())
+
+    client = OrchestratorClient("http://orch", TOKEN, transport=httpx.MockTransport(handler))
+    async with client:
+        with pytest.raises(OrchestratorError) as info:
+            await client.download_file("s", "a.bin", max_bytes=10)
+    assert info.value.status == 413
+
+
+async def test_download_file_5xx_unavailable(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "pr-1")
+        fake.put_file(str(session.id), "a.txt", b"hi")
+        fake.fail_next("download_file", 503)
+        with pytest.raises(OrchestratorUnavailable):
+            await client.download_file(session.id, "a.txt")
+        assert await client.download_file(session.id, "a.txt") == b"hi"
