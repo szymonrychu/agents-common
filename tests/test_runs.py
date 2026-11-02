@@ -520,3 +520,34 @@ async def test_update_message_session_gone_fails_the_run(fake, client, store, pa
     with pytest.raises(NotFound):
         await post_update(client, store, upd, parent.session_id, "c", UPDATE_MARK)
     assert (store.rows[2]["status"], store.rows[2]["reason"]) == ("failed", "session_not_found")
+
+
+async def test_dispatch_posts_attachments(fake, client, store, run):
+    from agents_common.orchestrator import Attachment
+
+    att = Attachment(name="s.png", mime="image/png", data=b"\x89PNGdata")
+    out = await dispatch(client, store, run, "see", MARK, attachments=[att])
+    assert fake.attachments[int(out.message_id)] == [att]
+
+
+async def test_deliver_posts_attachments(fake, client, store, run):
+    from agents_common.orchestrator import Attachment
+    from agents_common.runs import deliver
+
+    session = await client.create_session(run.preset_id, "wh-x")
+    att = Attachment(name="s.png", mime="image/png", data=b"\x89PNGdata")
+    out = await deliver(client, store, run, str(session.id), "see", MARK, attachments=[att])
+    assert out is not None
+    assert fake.attachments[int(out.message_id)] == [att]
+
+
+async def test_adopted_message_does_not_repost_attachments(fake, client, store, run):
+    from agents_common.orchestrator import Attachment
+
+    session = await client.create_session(run.preset_id, run.slug)
+    await client.post_message(session.id, f"see\n\n{MARK}")
+    att = Attachment(name="s.png", mime="image/png", data=b"x")
+    out = await dispatch(client, store, run, "see", MARK, attachments=[att])
+    assert out.message_id is not None
+    assert not fake.attachments
+    assert len(posts(fake)) == 1
