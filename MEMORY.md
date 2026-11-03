@@ -25,3 +25,9 @@ Lessons that outlive a session. Newest first.
   real bytes. `download_file` streams with a cap (`max_bytes`, default 8 MiB) and aborts at the
   first chunk past it (also on a declared Content-Length), so an agent-written huge file cannot
   exhaust memory; the cap surfaces as `OrchestratorError(413, "too_large")`.
+- 2026-11-03: `discard_session` is a thin DELETE returning the 202 `SessionView`; the client does not
+  treat 404 specially beyond `NotFound`, because the orchestrator answers 404 both for an unknown
+  session and for one the calling service did not create (ownership check), and callers close
+  best effort. The fake's DELETE is a separate route from GET with a private handler
+  (`_delete_session`) since the public helper `discard_session` already exists on the fake; it
+  only 404s on unknown ids and does not model ownership.

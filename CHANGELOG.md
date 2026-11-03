@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.9.0
+
+Session discard. Needs an agents-orchestrator that allows DELETE on the service port (4.1.0). No breaking change.
+
+- `orchestrator`: `OrchestratorClient.discard_session(session_id)` sends `DELETE /api/v1/sessions/{id}` and returns the `Session` (202); 404 raises `NotFound`, 5xx `OrchestratorUnavailable`.
+- `fake_orchestrator`: DELETE route on `/api/v1/sessions/{id}` (404 on unknown), records the call in `discarded`, routes through `fail_next("discard_session", status)`.
+
 ## v0.8.0
 
 Message attachments and file download. Needs an agents-orchestrator with attachments and the file download route. No breaking change.
