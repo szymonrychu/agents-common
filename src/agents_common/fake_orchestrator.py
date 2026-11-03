@@ -37,6 +37,7 @@ class FakeOrchestrator:
         self.files: dict[tuple[str, str], bytes] = {}
         self.downloads: list[tuple[str, str, str | None]] = []
         self.requests: list[Request] = []
+        self.discarded: list[str] = []
         self._fail: dict[str, list[int]] = {}
         self._usage_refusals: list[tuple[datetime, str, float, int]] = []
         self._next_message_id = 1
@@ -50,6 +51,11 @@ class FakeOrchestrator:
                     methods=["GET", "POST"],
                 ),
                 Route("/api/v1/sessions/{id}", self._wrap("get_session", self._get_session)),
+                Route(
+                    "/api/v1/sessions/{id}",
+                    self._wrap("discard_session", self._delete_session),
+                    methods=["DELETE"],
+                ),
                 Route(
                     "/api/v1/sessions/{id}/messages",
                     self._wrap("messages", self._messages),
@@ -241,6 +247,14 @@ class FakeOrchestrator:
         if session is None:
             return _error(404, "not_found", "session not found")
         return JSONResponse(session)
+
+    async def _delete_session(self, request: Request):
+        sid = request.path_params["id"]
+        if sid not in self.sessions:
+            return _error(404, "not_found", "session not found")
+        self.discarded.append(sid)
+        self.discard_session(sid)
+        return JSONResponse(self.sessions[sid], status_code=202)
 
     async def _messages(self, request: Request):
         sid = request.path_params["id"]

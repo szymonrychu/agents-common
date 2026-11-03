@@ -443,3 +443,33 @@ async def test_list_sessions_parses(fake):
         await client.create_session(preset.id, "s-b")
         sessions = await client.list_sessions()
     assert sorted(s.slug for s in sessions) == ["s-a", "s-b"]
+
+
+async def test_discard_session_returns_session_and_records_call(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "s-del")
+        discarded = await client.discard_session(session.id)
+        assert discarded.id == session.id
+        assert discarded.desired == "deleting"
+        assert await client.discard_session(session.id) is not None
+    deletes = [r for r in fake.requests if r.method == "DELETE"]
+    assert [r.url.path for r in deletes] == [f"/api/v1/sessions/{session.id}"] * 2
+    assert fake.discarded == [str(session.id), str(session.id)]
+
+
+async def test_discard_session_unknown_is_not_found(fake):
+    async with make_client(fake) as client:
+        with pytest.raises(NotFound):
+            await client.discard_session(uuid.uuid4())
+    assert fake.discarded == []
+
+
+async def test_discard_session_5xx_unavailable(fake):
+    preset = fake.add_preset("default", is_default=True)
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "s-del")
+        fake.fail_next("discard_session", 503)
+        with pytest.raises(OrchestratorUnavailable):
+            await client.discard_session(session.id)
+        assert (await client.discard_session(session.id)).id == session.id

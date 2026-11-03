@@ -230,6 +230,12 @@ class OrchestratorClient:
     async def get_session(self, session_id: uuid.UUID | str) -> Session:
         return Session.model_validate(await self._request("GET", f"/api/v1/sessions/{session_id}"))
 
+    async def discard_session(self, session_id: uuid.UUID | str) -> Session:
+        """Start deleting a session (`DELETE /api/v1/sessions/{id}`, 202). Idempotent; an
+        unknown session, or one the service token did not create, raises `NotFound`."""
+        data = await self._request("DELETE", f"/api/v1/sessions/{session_id}")
+        return Session.model_validate(data)
+
     async def list_sessions(self) -> list[Session]:
         return _SESSIONS.validate_python(await self._request("GET", "/api/v1/sessions"))
 
