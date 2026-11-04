@@ -205,6 +205,7 @@ SESSION_ROUTES = {
     "/api/v1/presets/{id}",
     "/api/v1/sessions",
     "/api/v1/sessions/{id}",
+    "/api/v1/sessions/{id}/agent-token/verify",
     "/api/v1/sessions/{id}/messages",
     "/api/v1/sessions/{id}/files/download",
     "/api/v1/messages/{id}",
@@ -473,3 +474,46 @@ async def test_discard_session_5xx_unavailable(fake):
         with pytest.raises(OrchestratorUnavailable):
             await client.discard_session(session.id)
         assert (await client.discard_session(session.id)).id == session.id
+
+
+async def new_session(fake: FakeOrchestrator) -> str:
+    preset = fake.add_preset("p")
+    async with make_client(fake) as c:
+        return str((await c.create_session(preset.id, "s")).id)
+
+
+async def test_verify_agent_token_ok(fake):
+    sid = await new_session(fake)
+    fake.set_agent_token(sid, "s3cr3t-value")
+    async with make_client(fake) as c:
+        assert await c.verify_agent_token(sid, "s3cr3t-value") == uuid.UUID(sid)
+    body = [r for r in fake.requests if r.url.path.endswith("/agent-token/verify")]
+    assert len(body) == 1 and body[0].method == "POST" and "s3cr3t-value" not in str(body[0].url)
+
+
+async def test_verify_agent_token_refusal_is_none(fake):
+    sid = await new_session(fake)
+    fake.set_agent_token(sid, "s3cr3t-value")
+    async with make_client(fake) as c:
+        assert await c.verify_agent_token(sid, "wrong") is None
+        assert await c.verify_agent_token(str(uuid.uuid4()), "s3cr3t-value") is None
+
+
+async def test_verify_agent_token_returns_echoed_id(fake):
+    sid, other = await new_session(fake), str(uuid.uuid4())
+    fake.set_agent_token(sid, "s3cr3t-value", answer_id=other)
+    async with make_client(fake) as c:
+        assert await c.verify_agent_token(sid, "s3cr3t-value") == uuid.UUID(other)
+
+
+async def test_verify_agent_token_other_statuses_raise(fake):
+    sid = await new_session(fake)
+    fake.set_agent_token(sid, "s3cr3t-value")
+    async with make_client(fake) as c:
+        fake.fail_next("verify_agent_token", 401)
+        with pytest.raises(OrchestratorError) as err:
+            await c.verify_agent_token(sid, "s3cr3t-value")
+        assert "s3cr3t-value" not in str(err.value)
+        fake.fail_next("verify_agent_token", 503)
+        with pytest.raises(OrchestratorUnavailable):
+            await c.verify_agent_token(sid, "s3cr3t-value")

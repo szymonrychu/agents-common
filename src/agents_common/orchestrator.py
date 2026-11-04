@@ -169,6 +169,10 @@ _SESSIONS = TypeAdapter(list[Session])
 _MESSAGES = TypeAdapter(list[Message])
 
 
+class _Verified(_Model):
+    session_id: uuid.UUID
+
+
 class OrchestratorClient:
     def __init__(
         self,
@@ -235,6 +239,20 @@ class OrchestratorClient:
         unknown session, or one the service token did not create, raises `NotFound`."""
         data = await self._request("DELETE", f"/api/v1/sessions/{session_id}")
         return Session.model_validate(data)
+
+    async def verify_agent_token(self, session_id: uuid.UUID | str, token: str) -> uuid.UUID | None:
+        """Check `token` against the agent token of `session_id`
+        (`POST /api/v1/sessions/{id}/agent-token/verify`, service port, body-only token).
+        Returns the session id the orchestrator confirmed (200), or None when it refuses (404,
+        which never says why: unknown, foreign, not active or wrong token). Any other status
+        raises; the token is never put in an error message."""
+        try:
+            data = await self._request(
+                "POST", f"/api/v1/sessions/{session_id}/agent-token/verify", {"token": token}
+            )
+        except NotFound:
+            return None
+        return _Verified.model_validate(data).session_id
 
     async def list_sessions(self) -> list[Session]:
         return _SESSIONS.validate_python(await self._request("GET", "/api/v1/sessions"))

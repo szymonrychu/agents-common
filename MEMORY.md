@@ -31,3 +31,7 @@ Lessons that outlive a session. Newest first.
   best effort. The fake's DELETE is a separate route from GET with a private handler
   (`_delete_session`) since the public helper `discard_session` already exists on the fake; it
   only 404s on unknown ids and does not model ownership.
+- 2026-11-04: `verify_agent_token` returns `uuid.UUID | None` (confirmed id, or None on 404) instead of a
+  bool: the orchestrator answer echoes a session id and the caller must check it is the one it
+  asked about, so the client hands it over rather than hiding it. 404 is not an error here
+  because the orchestrator uses one 404 for every refusal; all other statuses still raise.

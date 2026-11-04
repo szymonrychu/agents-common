@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.9.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.10.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.9.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.10.0`.
 
 ## `settings`
 
@@ -47,7 +47,7 @@ Client of the agents-orchestrator session API (`/api/v1/sessions`, `/api/v1/sess
 `/api/v1/sessions/{id}/messages`).
 
 Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_sessions`,
-`discard_session`, `list_messages`, `post_message`, `get_message`, `download_file`, `list_presets`, `get_preset`), `Attachment`, `AttachmentMeta`, `Preset`, `Session`, `Turn`,
+`discard_session`, `verify_agent_token`, `list_messages`, `post_message`, `get_message`, `download_file`, `list_presets`, `get_preset`), `Attachment`, `AttachmentMeta`, `Preset`, `Session`, `Turn`,
 `Message` (`session_id`, `command`, `attachments`), `CommandOutcome`, `OrchestratorError`, `NotFound`,
 `UsageQuotaRefused`, `OrchestratorUnavailable`.
 `Preset.spec` is the sparse preset spec and `Preset.reuse_running_agent` its optional
@@ -75,6 +75,11 @@ agent wrote in its workdir; it streams and raises `OrchestratorError(413, "too_l
 the body passes `max_bytes`. `list_sessions()` returns every `Session`.
 `discard_session(session_id)` starts deleting a session (DELETE, 202) and returns it; 404 is
 `NotFound`. The fake records the ids in `discarded`.
+`verify_agent_token(session_id, token)` asks the service port whether `token` is the agent token of
+a session this service created (POST, token in the body, never in the URL or an error): it returns
+the session id the orchestrator confirmed (200) or `None` (404, which never says why); any other
+status raises. The caller must compare the returned id with the one it asked about. The fake
+takes `set_agent_token(session_id, token, answer_id=None)`.
 
 ## `fake_orchestrator`
 
@@ -92,7 +97,7 @@ and create nothing),
 `put_file(session_id, path, data)` (makes it downloadable), the `attachments`, `files` and
 `downloads` stores,
 `fail_next(route, status)` (route labels are client method names plus `list_sessions`,
-`create_session`, `get_session`, `download_file`, `discard_session`).
+`create_session`, `get_session`, `download_file`, `discard_session`, `verify_agent_token`).
 
     from agents_common.fake_orchestrator import FakeOrchestrator
 
