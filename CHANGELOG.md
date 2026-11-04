@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.10.0
+
+Agent token check. Needs an agents-orchestrator with `POST /api/v1/sessions/{id}/agent-token/verify` on the service port (PR 73). No breaking change.
+
+- `orchestrator`: `OrchestratorClient.verify_agent_token(session_id, token)` returns the confirmed session id on 200 and `None` on 404; other statuses raise (`OrchestratorError`, 5xx `OrchestratorUnavailable`). The token travels in the body only.
+- `fake_orchestrator`: the verify route, `set_agent_token(session_id, token, answer_id=None)`, routes through `fail_next("verify_agent_token", status)`.
+
 ## v0.9.0
 
 Session discard. Needs an agents-orchestrator that allows DELETE on the service port (4.1.0). No breaking change.

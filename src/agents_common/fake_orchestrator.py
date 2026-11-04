@@ -38,6 +38,7 @@ class FakeOrchestrator:
         self.downloads: list[tuple[str, str, str | None]] = []
         self.requests: list[Request] = []
         self.discarded: list[str] = []
+        self.agent_tokens: dict[str, tuple[str, str]] = {}
         self._fail: dict[str, list[int]] = {}
         self._usage_refusals: list[tuple[datetime, str, float, int]] = []
         self._next_message_id = 1
@@ -55,6 +56,11 @@ class FakeOrchestrator:
                     "/api/v1/sessions/{id}",
                     self._wrap("discard_session", self._delete_session),
                     methods=["DELETE"],
+                ),
+                Route(
+                    "/api/v1/sessions/{id}/agent-token/verify",
+                    self._wrap("verify_agent_token", self._verify_agent_token),
+                    methods=["POST"],
                 ),
                 Route(
                     "/api/v1/sessions/{id}/messages",
@@ -247,6 +253,19 @@ class FakeOrchestrator:
         if session is None:
             return _error(404, "not_found", "session not found")
         return JSONResponse(session)
+
+    def set_agent_token(self, session_id: str, token: str, answer_id: str | None = None) -> None:
+        """Make `token` the agent token of `session_id`; the 200 answer echoes `answer_id`
+        (default the session id) so a test can model a confused orchestrator."""
+        self.agent_tokens[session_id] = (token, answer_id or session_id)
+
+    async def _verify_agent_token(self, request: Request):
+        sid = request.path_params["id"]
+        body = await request.json()
+        known = self.agent_tokens.get(sid)
+        if sid not in self.sessions or known is None or body.get("token") != known[0]:
+            return _error(404, "not_found", "session not found")
+        return JSONResponse({"session_id": known[1]})
 
     async def _delete_session(self, request: Request):
         sid = request.path_params["id"]
