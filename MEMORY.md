@@ -2,6 +2,13 @@
 
 Lessons that outlive a session. Newest first.
 
+- 2026-11-08: `agents_common.labels` exists so the vault has one owner of the label rules and the
+  labels epic has a seam to switch to. It copies the orchestrator rules verbatim; the orchestrator
+  and agents-taskboard keep their own copies until that epic. `is_project_label` assumes a project
+  slug is a DNS-label-like `[a-z0-9]([-a-z0-9]*[a-z0-9])?` of at most 32 characters, applied to
+  normalised labels; any `project:` label that fails it is invalid. `labels_match` treats an empty
+  entry as match-all and does no normalisation.
+
 - 2026-10-25: a shared library (design D1) exists so agents-webhook and agents-schedule share one
   tested database, orchestrator-client and run-tracking layer instead of copying it; services pin
   a tag and tags are never re-pointed.

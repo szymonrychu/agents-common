@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.11.0
+
+Shared labels. No breaking change.
+
+- `labels`: new module with the preset label rules (`normalize_label`, `normalize_labels`), the reserved `project:` prefix (`is_project_label`) and `labels_match`. The orchestrator and agents-taskboard keep their own copies for now.
+- `orchestrator`: `Preset.labels` (default empty list), parsed from the orchestrator `PresetView`.
+- `fake_orchestrator`: `add_preset(..., labels=None)` stores the labels.
+
 ## v0.10.0
 
 Agent token check. Needs an agents-orchestrator with `POST /api/v1/sessions/{id}/agent-token/verify` on the service port (PR 73). No breaking change.
