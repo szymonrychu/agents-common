@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.10.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.11.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.10.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.11.0`.
 
 ## `settings`
 
@@ -170,6 +170,21 @@ presented token is never logged.
     from agents_common.service_gate import ServiceTokenGate, load_tokens
 
     app = ServiceTokenGate(app, load_tokens("/etc/tokens/admin"))  # one token per line
+
+## `labels`
+
+Public names: `normalize_label`, `normalize_labels`, `is_project_label`, `labels_match`,
+`LABEL_MAX_LEN`, `LABELS_MAX`, `PROJECT_PREFIX`, `PROJECT_SLUG_MAX`. A label is trimmed and
+lowercased, 1 to 40 characters of `a-z0-9-_.:`; a list is deduplicated in first-seen order and
+holds at most 20 labels (`ValueError` otherwise). The `project:` prefix is reserved: a project
+label is `project:<slug>` with a slug of 1 to 32 characters of `a-z0-9-` that starts and ends
+alphanumeric; callers apply `is_project_label` to normalised labels, and a label that starts with
+`project:` and is not a project label is invalid. `labels_match(entry, target)` is true when the
+entry has no labels, else when the two sets intersect (inputs are already normalised).
+
+    from agents_common.labels import labels_match, normalize_labels
+
+    labels_match(normalize_labels(["Project:X"]), ["project:x"])  # True
 
 ## Versioning
 

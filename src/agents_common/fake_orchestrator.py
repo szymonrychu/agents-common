@@ -78,7 +78,11 @@ class FakeOrchestrator:
     # helpers -------------------------------------------------------------
 
     def add_preset(
-        self, name: str, is_default: bool = False, spec: dict[str, Any] | None = None
+        self,
+        name: str,
+        is_default: bool = False,
+        spec: dict[str, Any] | None = None,
+        labels: list[str] | None = None,
     ) -> _PresetRef:
         pid = str(uuid.uuid4())
         self.presets[pid] = {
@@ -86,6 +90,7 @@ class FakeOrchestrator:
             "name": name,
             "is_default": is_default,
             "spec": dict(spec or {}),
+            "labels": list(labels or []),
             "created_at": _now(),
             "updated_at": _now(),
         }

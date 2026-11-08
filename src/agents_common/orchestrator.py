@@ -91,6 +91,7 @@ class Preset(_Model):
     name: str
     is_default: bool = False
     spec: dict[str, Any] = {}
+    labels: list[str] = []
 
     @property
     def reuse_running_agent(self) -> bool:

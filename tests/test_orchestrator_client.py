@@ -11,6 +11,7 @@ from agents_common.orchestrator import (
     OrchestratorClient,
     OrchestratorError,
     OrchestratorUnavailable,
+    Preset,
     UsageQuotaRefused,
 )
 
@@ -517,3 +518,14 @@ async def test_verify_agent_token_other_statuses_raise(fake):
         fake.fail_next("verify_agent_token", 503)
         with pytest.raises(OrchestratorUnavailable):
             await c.verify_agent_token(sid, "s3cr3t-value")
+
+
+async def test_preset_labels_roundtrip_and_default(fake):
+    fake.add_preset("p", labels=["a"])
+    plain = fake.add_preset("q")
+    async with make_client(fake) as client:
+        presets = {p.name: p for p in await client.list_presets()}
+    assert presets["p"].labels == ["a"]
+    assert presets["q"].labels == []
+    assert plain.name == "q"
+    assert Preset.model_validate({"id": str(uuid.uuid4()), "name": "x"}).labels == []
