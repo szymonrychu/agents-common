@@ -49,3 +49,7 @@ Lessons that outlive a session. Newest first.
   `get_project` (NotFound on 404, archived included) back taskboard's ProjectLookup. The fake
   seeds `default`, has `add_project`, `add_preset(project=)`, and answers 422 `unknown_project` /
   `project_archived` on create like the orchestrator.
+- 2026-11-09: `labels_match` (v0.13.0, T-72, user decision Q25 A): only `project:` labels restrict. Why: the
+  user tags every vault entry with descriptive labels (admin, github, ...) and presets carry none, so
+  intersecting all labels made every attach fail 422 vault_label_mismatch. Other labels stay stored and
+  shown but never decide; the target stays the preset's effective labels (preset labels + project:<slug>).
