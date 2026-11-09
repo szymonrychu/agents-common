@@ -26,12 +26,14 @@ def _now() -> str:
 
 class FakeOrchestrator:
     """Serves the agents-orchestrator service-port routes the client uses (presets, sessions,
-    messages). `app` is an ASGI app."""
+    messages, projects). `app` is an ASGI app."""
 
     def __init__(self, token: str = "test-token"):
         self.token = token
         self.presets: dict[str, dict[str, Any]] = {}
         self.sessions: dict[str, dict[str, Any]] = {}
+        self.projects: dict[str, dict[str, Any]] = {}
+        self.add_project("default", "Default")
         self.messages: dict[int, dict[str, Any]] = {}
         self.attachments: dict[int, list[Attachment]] = {}
         self.files: dict[tuple[str, str], bytes] = {}
@@ -51,6 +53,8 @@ class FakeOrchestrator:
                     self._wrap("sessions", self._sessions),
                     methods=["GET", "POST"],
                 ),
+                Route("/api/v1/projects", self._wrap("list_projects", self._list_projects)),
+                Route("/api/v1/projects/{slug}", self._wrap("get_project", self._get_project)),
                 Route("/api/v1/sessions/{id}", self._wrap("get_session", self._get_session)),
                 Route(
                     "/api/v1/sessions/{id}",
@@ -83,6 +87,7 @@ class FakeOrchestrator:
         is_default: bool = False,
         spec: dict[str, Any] | None = None,
         labels: list[str] | None = None,
+        project: str = "default",
     ) -> _PresetRef:
         pid = str(uuid.uuid4())
         self.presets[pid] = {
@@ -91,10 +96,26 @@ class FakeOrchestrator:
             "is_default": is_default,
             "spec": dict(spec or {}),
             "labels": list(labels or []),
+            "project": project,
             "created_at": _now(),
             "updated_at": _now(),
         }
         return _PresetRef(uuid.UUID(pid), name)
+
+    def add_project(
+        self, slug: str, name: str, description: str = "", archived: bool = False
+    ) -> None:
+        """Add (or replace) a project; `default` exists from the start."""
+        self.projects[slug] = {
+            "slug": slug,
+            "name": name,
+            "description": description,
+            "archived": archived,
+            "created_at": _now(),
+            "updated_at": _now(),
+            "presets": None,
+            "sessions": None,
+        }
 
     def put_file(self, session_id: str, path: str, data: bytes) -> None:
         """Make `path` downloadable from the session's workdir."""
@@ -214,13 +235,19 @@ class FakeOrchestrator:
 
     async def _sessions(self, request: Request):
         if request.method == "GET":
-            return JSONResponse(list(self.sessions.values()))
+            slug = request.query_params.get("slug")
+            return JSONResponse([s for s in self.sessions.values() if slug in (None, s["slug"])])
         if self._usage_refusals:
             return self._usage_refusal(*self._usage_refusals.pop(0))
         body = await request.json()
         preset_id, slug = body.get("preset_id"), body.get("slug")
         if preset_id not in self.presets:
             return _error(404, "not_found", "preset not found")
+        project = body.get("project") or self.presets[preset_id]["project"]
+        if project not in self.projects:
+            return _error(422, "unknown_project", f"project {project!r} does not exist")
+        if self.projects[project]["archived"]:
+            return _error(422, "project_archived", f"project {project!r} is archived")
         if any(s["slug"] == slug for s in self.sessions.values()):
             return _error(409, "conflict", f"session {slug!r} already exists")
         sid = str(uuid.uuid4())
@@ -229,6 +256,7 @@ class FakeOrchestrator:
             "slug": slug,
             "preset_id": preset_id,
             "preset_name": self.presets[preset_id]["name"],
+            "project": project,
             "desired": "active",
             "created_at": _now(),
         }
@@ -252,6 +280,16 @@ class FakeOrchestrator:
             }
         }
         return JSONResponse(body, status_code=409, headers={"Retry-After": str(retry_after)})
+
+    async def _list_projects(self, request: Request):
+        archived = request.query_params.get("archived") == "true"
+        return JSONResponse([p for p in self.projects.values() if p["archived"] == archived])
+
+    async def _get_project(self, request: Request):
+        project = self.projects.get(request.path_params["slug"])
+        if project is None:
+            return _error(404, "not_found", "project not found")
+        return JSONResponse(project)
 
     async def _get_session(self, request: Request):
         session = self.sessions.get(request.path_params["id"])

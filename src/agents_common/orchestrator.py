@@ -92,6 +92,7 @@ class Preset(_Model):
     is_default: bool = False
     spec: dict[str, Any] = {}
     labels: list[str] = []
+    project: str = "default"
 
     @property
     def reuse_running_agent(self) -> bool:
@@ -106,6 +107,16 @@ class Session(_Model):
     preset_id: uuid.UUID | None = None
     desired: str | None = None
     status: dict[str, Any] | None = None
+    project: str = "default"
+
+
+class Project(_Model):
+    """An orchestrator project (the permission scope of presets and sessions)."""
+
+    slug: str
+    name: str
+    description: str = ""
+    archived: bool = False
 
 
 class Turn(_Model):
@@ -167,6 +178,7 @@ class _Accepted(_Model):
 
 _PRESETS = TypeAdapter(list[Preset])
 _SESSIONS = TypeAdapter(list[Session])
+_PROJECTS = TypeAdapter(list[Project])
 _MESSAGES = TypeAdapter(list[Message])
 
 
@@ -203,9 +215,11 @@ class OrchestratorClient:
     ) -> None:
         await self.aclose()
 
-    async def _request(self, method: str, path: str, json: Any = None) -> Any:
+    async def _request(
+        self, method: str, path: str, json: Any = None, params: dict[str, str] | None = None
+    ) -> Any:
         try:
-            resp = await self._http.request(method, path, json=json)
+            resp = await self._http.request(method, path, json=json, params=params)
         except httpx.HTTPError as exc:
             raise OrchestratorUnavailable(f"{method} {path}: {exc!r}") from exc
         _raise_for_status(method, path, resp)
@@ -217,20 +231,36 @@ class OrchestratorClient:
     async def get_preset(self, preset_id: uuid.UUID | str) -> Preset:
         return Preset.model_validate(await self._request("GET", f"/api/v1/presets/{preset_id}"))
 
-    async def create_session(self, preset_id: uuid.UUID | str, slug: str) -> Session:
-        """Create a session from a preset; idempotent on slug (409 adopts the existing one)."""
+    async def create_session(
+        self, preset_id: uuid.UUID | str, slug: str, *, project: str | None = None
+    ) -> Session:
+        """Create a session from a preset; idempotent on slug (409 adopts the existing one).
+
+        `project` places the session in that project (default: the preset's project). A 409
+        `conflict` adopts the session of that slug only when it is in the requested project
+        (any project when `project` is None); otherwise the conflict is re-raised."""
+        body: dict[str, Any] = {"preset_id": str(preset_id), "slug": slug}
+        if project is not None:
+            body["project"] = project
         try:
-            data = await self._request(
-                "POST", "/api/v1/sessions", {"preset_id": str(preset_id), "slug": slug}
-            )
+            data = await self._request("POST", "/api/v1/sessions", body)
         except OrchestratorError as exc:
             if exc.status != 409 or exc.code != "conflict":
                 raise
-            for session in await self.list_sessions():
-                if session.slug == slug:
+            found = await self._request("GET", "/api/v1/sessions", params={"slug": slug})
+            for session in _SESSIONS.validate_python(found):
+                if session.slug == slug and (project is None or session.project == project):
                     return session
             raise
         return Session.model_validate(data)
+
+    async def list_projects(self) -> list[Project]:
+        """Active projects (`GET /api/v1/projects`, readable on the service port)."""
+        return _PROJECTS.validate_python(await self._request("GET", "/api/v1/projects"))
+
+    async def get_project(self, slug: str) -> Project:
+        """One project, archived or not; an unknown slug raises `NotFound`."""
+        return Project.model_validate(await self._request("GET", f"/api/v1/projects/{slug}"))
 
     async def get_session(self, session_id: uuid.UUID | str) -> Session:
         return Session.model_validate(await self._request("GET", f"/api/v1/sessions/{session_id}"))

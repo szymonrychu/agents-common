@@ -12,6 +12,7 @@ from agents_common.orchestrator import (
     OrchestratorError,
     OrchestratorUnavailable,
     Preset,
+    Project,
     UsageQuotaRefused,
 )
 
@@ -204,6 +205,8 @@ async def test_error_taken_slug_and_unknown_preset(fake):
 SESSION_ROUTES = {
     "/api/v1/presets",
     "/api/v1/presets/{id}",
+    "/api/v1/projects",
+    "/api/v1/projects/{slug}",
     "/api/v1/sessions",
     "/api/v1/sessions/{id}",
     "/api/v1/sessions/{id}/agent-token/verify",
@@ -529,3 +532,74 @@ async def test_preset_labels_roundtrip_and_default(fake):
     assert presets["q"].labels == []
     assert plain.name == "q"
     assert Preset.model_validate({"id": str(uuid.uuid4()), "name": "x"}).labels == []
+
+
+async def test_create_session_sends_project(fake):
+    fake.add_project("alpha", "Alpha")
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "s1", project="alpha")
+        assert session.project == "alpha"
+        assert (await client.create_session(preset.id, "s2")).project == "default"
+    assert [s["project"] for s in fake.sessions.values()] == ["alpha", "default"]
+
+
+async def test_conflict_adopts_same_project_by_slug(fake):
+    fake.add_project("alpha", "Alpha")
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        first = await client.create_session(preset.id, "same", project="alpha")
+        second = await client.create_session(preset.id, "same", project="alpha")
+    assert second.id == first.id
+    assert fake.requests[-1].url.path == "/api/v1/sessions"
+    assert fake.requests[-1].url.query == "slug=same"
+
+
+async def test_conflict_other_project_reraises(fake):
+    fake.add_project("alpha", "Alpha")
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        await client.create_session(preset.id, "same")
+        with pytest.raises(OrchestratorError) as ei:
+            await client.create_session(preset.id, "same", project="alpha")
+    assert (ei.value.status, ei.value.code) == (409, "conflict")
+
+
+async def test_create_session_unknown_and_archived_project(fake):
+    fake.add_project("old", "Old", archived=True)
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        with pytest.raises(OrchestratorError) as ei:
+            await client.create_session(preset.id, "a", project="nope")
+        assert (ei.value.status, ei.value.code) == (422, "unknown_project")
+        with pytest.raises(OrchestratorError) as ei:
+            await client.create_session(preset.id, "b", project="old")
+        assert (ei.value.status, ei.value.code) == (422, "project_archived")
+
+
+async def test_list_and_get_project(fake):
+    fake.add_project("alpha", "Alpha", description="d")
+    fake.add_project("old", "Old", archived=True)
+    async with make_client(fake) as client:
+        assert [p.slug for p in await client.list_projects()] == ["default", "alpha"]
+        assert await client.get_project("alpha") == Project(
+            slug="alpha", name="Alpha", description="d", archived=False
+        )
+        assert (await client.get_project("old")).archived is True
+
+
+async def test_get_project_404_not_found(fake):
+    async with make_client(fake) as client:
+        with pytest.raises(NotFound):
+            await client.get_project("missing")
+
+
+async def test_preset_project_defaults(fake):
+    fake.add_project("alpha", "Alpha")
+    fake.add_preset("a", project="alpha")
+    fake.add_preset("b")
+    async with make_client(fake) as client:
+        assert {p.name: p.project for p in await client.list_presets()} == {
+            "a": "alpha",
+            "b": "default",
+        }
