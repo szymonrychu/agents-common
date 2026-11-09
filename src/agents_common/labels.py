@@ -47,7 +47,9 @@ def is_project_label(label: str) -> bool:
 
 
 def labels_match(entry_labels: Iterable[str], target_labels: Iterable[str]) -> bool:
-    """True when the entry has no labels, else when the two label sets intersect. Inputs are
-    already normalised."""
-    entry = set(entry_labels)
-    return not entry or not entry.isdisjoint(target_labels)
+    """True when the entry is not restricted to other projects. Only `project:` labels restrict:
+    an entry without any `project:` label (unlabelled, or tags only) matches every target; an
+    entry with `project:` labels matches only when the target holds at least one of them. All
+    other labels are descriptive tags and never decide. Inputs are already normalised."""
+    scope = {label for label in entry_labels if label.startswith(PROJECT_PREFIX)}
+    return not scope or not scope.isdisjoint(target_labels)

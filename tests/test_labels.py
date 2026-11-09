@@ -79,12 +79,27 @@ def test_is_project_label_false(label):
 @pytest.mark.parametrize(
     ("entry", "target", "expected"),
     [
+        # unlabelled entry matches any target
         ([], [], True),
         ([], ["x"], True),
-        (["a"], [], False),
-        (["a"], ["b"], False),
+        # tag-only entry (no project: label) matches any target
+        (["a"], [], True),
+        (["a"], ["b"], True),
         (["a", "b"], ["b"], True),
+        (["admin", "github"], ["project:x"], True),
+        # a project: label restricts to that project
         (["project:x"], ["project:x"], True),
+        (["project:x"], [], False),
+        (["project:x"], ["project:y"], False),
+        (["project:x"], ["x", "admin"], False),
+        # several project: labels: any one is enough
+        (["project:x", "project:y"], ["project:y"], True),
+        (["project:x", "project:y"], ["project:z"], False),
+        # mixed tags and project: label: only the project: label decides
+        (["admin", "project:x"], ["project:x"], True),
+        (["admin", "project:x"], ["admin"], False),
+        (["admin", "project:x"], ["admin", "project:y"], False),
+        (["admin", "project:x"], ["admin", "project:x"], True),
     ],
 )
 def test_labels_match(entry, target, expected):

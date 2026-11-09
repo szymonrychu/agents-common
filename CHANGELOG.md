@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.0
+
+Label scope. Behaviour change in `labels_match` only (same name and signature).
+
+- `labels`: `labels_match(entry, target)` now lets only `project:` labels restrict. An entry without a `project:` label (unlabelled, or descriptive tags only) matches every target; an entry with `project:` labels matches only when the target holds one of them. Before, any entry label restricted, so a tag-only entry failed to match a target with other labels.
+
 ## v0.12.0
 
 Projects. No breaking change. Needs an agents-orchestrator with the projects API (`/api/v1/projects`); `default` is the project every preset and session falls back to.

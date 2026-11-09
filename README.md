@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.12.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.13.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.12.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.13.0`.
 
 ## `settings`
 
@@ -179,12 +179,16 @@ lowercased, 1 to 40 characters of `a-z0-9-_.:`; a list is deduplicated in first-
 holds at most 20 labels (`ValueError` otherwise). The `project:` prefix is reserved: a project
 label is `project:<slug>` with a slug of 1 to 32 characters of `a-z0-9-` that starts and ends
 alphanumeric; callers apply `is_project_label` to normalised labels, and a label that starts with
-`project:` and is not a project label is invalid. `labels_match(entry, target)` is true when the
-entry has no labels, else when the two sets intersect (inputs are already normalised).
+`project:` and is not a project label is invalid. `labels_match(entry, target)` lets only
+`project:` labels restrict: it is true when the entry has no `project:` label (unlabelled, or tags
+only), else when the target holds at least one of the entry's `project:` labels; every other
+label is a descriptive tag and never decides (inputs are already normalised).
 
     from agents_common.labels import labels_match, normalize_labels
 
     labels_match(normalize_labels(["Project:X"]), ["project:x"])  # True
+    labels_match(["admin", "github"], ["project:x"])  # True: tags never restrict
+    labels_match(["admin", "project:y"], ["project:x"])  # False
 
 ## Versioning
 
