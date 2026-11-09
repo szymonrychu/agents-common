@@ -42,7 +42,7 @@ Lessons that outlive a session. Newest first.
   bool: the orchestrator answer echoes a session id and the caller must check it is the one it
   asked about, so the client hands it over rather than hiding it. 404 is not an error here
   because the orchestrator uses one 404 for every refusal; all other statuses still raise.
-- 2026-11-09: projects (v0.11.0, with labels). `Preset.project`/`Session.project` default "default";
+- 2026-11-09: projects (v0.12.0; labels shipped in v0.11.0). `Preset.project`/`Session.project` default "default";
   `Project` model; `create_session(..., project=)` adopts a 409 `conflict` session via
   `GET /api/v1/sessions?slug=` only when its project matches (any when project is None), else
   re-raises, so a slug clash across projects is never silently adopted. `list_projects` and

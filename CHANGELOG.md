@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.12.0
+
+Projects. No breaking change. Needs an agents-orchestrator with the projects API (`/api/v1/projects`); `default` is the project every preset and session falls back to.
+
+- `orchestrator`: `Project` model; `Preset.project` and `Session.project` (default `"default"`).
+- `orchestrator`: `OrchestratorClient.list_projects()` (active projects) and `get_project(slug)` (archived included; an unknown slug raises `NotFound`).
+- `orchestrator`: `create_session(..., project=)` places the session in that project. A 409 `conflict` adopts the existing session of that slug only when it is in the requested project (any project when `project` is None); otherwise the conflict is re-raised.
+- `fake_orchestrator`: seeds the `default` project, `add_project`, `add_preset(project=)`, the `/api/v1/projects` routes, and answers 422 `unknown_project` / `project_archived` on session create like the orchestrator.
+
 ## v0.11.0
 
 Shared labels. No breaking change.
