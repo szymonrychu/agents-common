@@ -341,6 +341,9 @@ class FakeOrchestrator:
             ]
         except (binascii.Error, KeyError, TypeError, ValueError):
             return _error(422, "invalid_attachment", "attachment is malformed")
+        from_user = body.get("from_user")
+        if from_user is not None and not isinstance(from_user, bool):
+            return _error(422, "invalid_request", "from_user must be a boolean")
         mid = self._next_message_id
         self._next_message_id += 1
         if atts:
@@ -349,6 +352,7 @@ class FakeOrchestrator:
             "id": mid,
             "session_id": sid,
             "text": body["text"],
+            "from_user": from_user,
             "status": "queued",
             "error": None,
             "created_at": _now(),

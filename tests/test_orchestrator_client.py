@@ -652,3 +652,28 @@ def test_session_without_summary_is_not_up():
     session = Session.model_validate({"id": str(uuid.uuid4()), "slug": "s"})
     assert session.summary is None
     assert not session.is_up
+
+
+async def test_post_message_sends_from_user_only_when_set(fake):
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "fu")
+        omitted = await client.post_message(session.id, "a")
+        yes = await client.post_message(session.id, "b", from_user=True)
+        no = await client.post_message(session.id, "c", from_user=False)
+    assert fake.messages[omitted.id]["from_user"] is None
+    assert fake.messages[yes.id]["from_user"] is True
+    assert fake.messages[no.id]["from_user"] is False
+
+
+async def test_fake_rejects_non_bool_from_user(fake):
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "fu2")
+        resp = await client._http.post(
+            f"/api/v1/sessions/{session.id}/messages",
+            json={"text": "x", "from_user": "yes"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "invalid_request"
