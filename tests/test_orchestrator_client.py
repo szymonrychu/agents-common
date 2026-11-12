@@ -13,6 +13,7 @@ from agents_common.orchestrator import (
     OrchestratorUnavailable,
     Preset,
     Project,
+    Session,
     UsageQuotaRefused,
 )
 
@@ -603,3 +604,51 @@ async def test_preset_project_defaults(fake):
             "a": "alpha",
             "b": "default",
         }
+
+
+async def _new_session(fake, client):
+    preset = fake.add_preset("default", is_default=True)
+    return await client.create_session(preset.id, "ready-1")
+
+
+async def test_new_session_is_booting(fake):
+    async with make_client(fake) as client:
+        created = await _new_session(fake, client)
+        session = await client.get_session(created.id)
+    assert session.summary.start_state == "booting"
+    assert session.summary.ready == 0
+    assert not session.is_up
+
+
+async def test_session_ready_summary_parsed(fake):
+    async with make_client(fake) as client:
+        created = await _new_session(fake, client)
+        fake.set_session_ready(str(created.id))
+        session = await client.get_session(created.id)
+    assert session.summary.ready == 1
+    assert session.summary.start_state == "ready"
+    assert session.is_up
+
+
+async def test_bootstrap_failed_is_not_up(fake):
+    async with make_client(fake) as client:
+        created = await _new_session(fake, client)
+        fake.set_session_ready(str(created.id), ready=1, start_state="bootstrap_failed")
+        session = await client.get_session(created.id)
+    assert not session.is_up
+
+
+async def test_deleting_session_is_not_up(fake):
+    async with make_client(fake) as client:
+        created = await _new_session(fake, client)
+        fake.set_session_ready(str(created.id))
+        fake.discard_session(str(created.id))
+        session = await client.get_session(created.id)
+    assert session.desired == "deleting"
+    assert not session.is_up
+
+
+def test_session_without_summary_is_not_up():
+    session = Session.model_validate({"id": str(uuid.uuid4()), "slug": "s"})
+    assert session.summary is None
+    assert not session.is_up

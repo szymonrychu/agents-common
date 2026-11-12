@@ -99,6 +99,14 @@ class Preset(_Model):
         return self.spec.get("reuse_running_agent") is True
 
 
+class SessionSummary(_Model):
+    """Readiness of a session: `ready` live ready agents, `start_state` booting, ready or
+    bootstrap_failed."""
+
+    ready: int = 0
+    start_state: str | None = None
+
+
 class Session(_Model):
     """An agents-orchestrator session; `status` is its status document."""
 
@@ -108,6 +116,18 @@ class Session(_Model):
     desired: str | None = None
     status: dict[str, Any] | None = None
     project: str = "default"
+    summary: SessionSummary | None = None
+
+    @property
+    def is_up(self) -> bool:
+        """True only for an active session whose start finished and has a ready agent; a
+        missing summary (older orchestrator, list rows) means unknown, so not up."""
+        return (
+            self.desired == "active"
+            and self.summary is not None
+            and self.summary.start_state == "ready"
+            and self.summary.ready > 0
+        )
 
 
 class Project(_Model):
