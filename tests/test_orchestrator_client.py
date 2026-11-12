@@ -617,6 +617,7 @@ async def test_new_session_is_booting(fake):
         session = await client.get_session(created.id)
     assert session.summary.start_state == "booting"
     assert session.summary.ready == 0
+    assert session.summary.ready_with_session == 0
     assert not session.is_up
 
 
@@ -627,7 +628,32 @@ async def test_session_ready_summary_parsed(fake):
         session = await client.get_session(created.id)
     assert session.summary.ready == 1
     assert session.summary.start_state == "ready"
+    assert session.summary.ready_with_session == 1
     assert session.is_up
+
+
+async def test_ready_pod_without_wrapper_session_is_not_up(fake):
+    async with make_client(fake) as client:
+        created = await _new_session(fake, client)
+        fake.set_session_ready(str(created.id), ready=1, ready_with_session=0)
+        session = await client.get_session(created.id)
+    assert session.summary.ready == 1
+    assert session.summary.start_state == "ready"
+    assert session.summary.ready_with_session == 0
+    assert not session.is_up
+
+
+def test_summary_without_ready_with_session_is_not_up():
+    session = Session.model_validate(
+        {
+            "id": str(uuid.uuid4()),
+            "slug": "s",
+            "desired": "active",
+            "summary": {"ready": 1, "start_state": "ready"},
+        }
+    )
+    assert session.summary.ready_with_session == 0
+    assert not session.is_up
 
 
 async def test_bootstrap_failed_is_not_up(fake):
