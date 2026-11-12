@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.16.0
+
+Session readiness needs a wrapper session (T-167). Needs agents-orchestrator with the summary field `ready_with_session` (PR #125); against an older one `is_up` is always false. Behaviour change in `Session.is_up` only.
+
+- `orchestrator`: `SessionSummary.ready_with_session` (default 0); `Session.is_up` requires `ready_with_session > 0` (the `ready > 0` test is implied) besides active and start state `ready`.
+- `fake_orchestrator`: `set_session_ready(..., ready_with_session=1)`; created sessions carry `ready_with_session` 0.
+
 ## v0.15.0
 
 From user. Needs agents-orchestrator 7.16.0 (PostMessage.from_user); an older one answers 422 when the flag is sent. No breaking change: the flag is sent only when set.

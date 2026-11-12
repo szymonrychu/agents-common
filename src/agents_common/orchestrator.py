@@ -101,10 +101,12 @@ class Preset(_Model):
 
 class SessionSummary(_Model):
     """Readiness of a session: `ready` live ready agents, `start_state` booting, ready or
-    bootstrap_failed."""
+    bootstrap_failed, `ready_with_session` live agents that are ready and hold a wrapper
+    session (0 when the orchestrator does not send the field)."""
 
     ready: int = 0
     start_state: str | None = None
+    ready_with_session: int = 0
 
 
 class Session(_Model):
@@ -120,13 +122,14 @@ class Session(_Model):
 
     @property
     def is_up(self) -> bool:
-        """True only for an active session whose start finished and has a ready agent; a
-        missing summary (older orchestrator, list rows) means unknown, so not up."""
+        """True only for an active session whose start finished and has an agent that is ready
+        and holds a wrapper session; a missing summary (older orchestrator, list rows) means
+        unknown, so not up."""
         return (
             self.desired == "active"
             and self.summary is not None
             and self.summary.start_state == "ready"
-            and self.summary.ready > 0
+            and self.summary.ready_with_session > 0
         )
 
 

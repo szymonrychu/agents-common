@@ -125,10 +125,18 @@ class FakeOrchestrator:
         self.messages[message_id]["status"] = "sent"
 
     def set_session_ready(
-        self, session_id: str, ready: int = 1, start_state: str = "ready"
+        self,
+        session_id: str,
+        ready: int = 1,
+        start_state: str = "ready",
+        ready_with_session: int = 1,
     ) -> None:
         """Set the session's readiness summary (a fresh session is booting with no ready agent)."""
-        self.sessions[str(session_id)]["summary"] = {"ready": ready, "start_state": start_state}
+        self.sessions[str(session_id)]["summary"] = {
+            "ready": ready,
+            "start_state": start_state,
+            "ready_with_session": ready_with_session,
+        }
 
     def discard_session(self, session_id: str) -> None:
         """Start deleting the session: desired becomes `deleting`, queued messages are cancelled
@@ -264,7 +272,7 @@ class FakeOrchestrator:
             "preset_name": self.presets[preset_id]["name"],
             "project": project,
             "desired": "active",
-            "summary": {"ready": 0, "start_state": "booting"},
+            "summary": {"ready": 0, "start_state": "booting", "ready_with_session": 0},
             "created_at": _now(),
         }
         self.sessions[sid] = session
