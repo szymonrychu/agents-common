@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.0
+
+Session readiness. Needs an agents-orchestrator whose SessionView has `summary` (any current one). No breaking change.
+
+- `orchestrator`: `SessionSummary` (`ready`, `start_state`), `Session.summary` and `Session.is_up` (active, start state `ready`, at least one ready agent; no summary is not up).
+- `fake_orchestrator`: created sessions carry a `booting` summary; `set_session_ready(session_id, ready=1, start_state="ready")`.
+
 ## v0.13.0
 
 Label scope. Behaviour change in `labels_match` only (same name and signature).

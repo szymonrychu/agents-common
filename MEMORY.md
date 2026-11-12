@@ -53,3 +53,4 @@ Lessons that outlive a session. Newest first.
   user tags every vault entry with descriptive labels (admin, github, ...) and presets carry none, so
   intersecting all labels made every attach fail 422 vault_label_mismatch. Other labels stay stored and
   shown but never decide; the target stays the preset's effective labels (preset labels + project:<slug>).
+- 2026-11-12: `Session.summary` / `is_up` (v0.14.0, T-138). `is_up` needs `desired == "active"`, `start_state == "ready"` and `ready > 0`. Why: the matrix connector marks a Messenger chat read at handoff, and a bootstrap_failed or deleting session must never mark a chat read; a missing summary (older orchestrator, list rows) means unknown and is treated as not up.

@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.13.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.14.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.13.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.14.0`.
 
 ## `settings`
 
@@ -47,13 +47,17 @@ Client of the agents-orchestrator session API (`/api/v1/sessions`, `/api/v1/sess
 `/api/v1/sessions/{id}/messages`).
 
 Public names: `OrchestratorClient` (`create_session`, `get_session`, `list_sessions`,
-`discard_session`, `verify_agent_token`, `list_messages`, `post_message`, `get_message`, `download_file`, `list_presets`, `get_preset`), `Attachment`, `AttachmentMeta`, `Preset`, `Session`, `Turn`,
+`discard_session`, `verify_agent_token`, `list_messages`, `post_message`, `get_message`, `download_file`, `list_presets`, `get_preset`), `Attachment`, `AttachmentMeta`, `Preset`, `Session`, `SessionSummary`, `Turn`,
 `Message` (`session_id`, `command`, `attachments`), `CommandOutcome`, `OrchestratorError`, `NotFound`,
 `UsageQuotaRefused`, `OrchestratorUnavailable`.
 `Preset.spec` is the sparse preset spec and `Preset.reuse_running_agent` its optional
 agent-reuse flag; `Session.status` is the session status document. `Message.command` is a
 command message's outcome (`state` completed, failed or cancelled, `result`, `error`,
 `turn_id`, `at`), None for a turn message and for a command with no outcome yet.
+`Session.summary` is a `SessionSummary` (`ready`, `start_state` booting, ready or
+bootstrap_failed) or None; `Session.is_up` is true only when `desired` is `active`, `start_state`
+is `ready` and `ready > 0` (a missing summary is not up). `get_session` carries the summary; list
+rows may not.
 
     from agents_common.orchestrator import OrchestratorClient
 
@@ -94,7 +98,8 @@ message `sent` with that command outcome),
 `refuse_usage(resets_at, *, metric="seven_day", percent=90.0, limit=80, times=1)` (the next
 `times` `create_session` calls answer the 409 `usage_quota` refusal with a `Retry-After` header
 and create nothing),
-`put_file(session_id, path, data)` (makes it downloadable), the `attachments`, `files` and
+`put_file(session_id, path, data)` (makes it downloadable),
+`set_session_ready(session_id, ready=1, start_state="ready")` (new sessions start `booting` with `ready` 0), the `attachments`, `files` and
 `downloads` stores,
 `fail_next(route, status)` (route labels are client method names plus `list_sessions`,
 `create_session`, `get_session`, `download_file`, `discard_session`, `verify_agent_token`).
