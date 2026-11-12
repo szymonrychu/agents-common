@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.0
+
+From user. Needs agents-orchestrator 7.16.0 (PostMessage.from_user); an older one answers 422 when the flag is sent. No breaking change: the flag is sent only when set.
+
+- `orchestrator`: `post_message(..., from_user=)` sends `from_user` only when not None.
+- `runs`: `dispatch`, `post_update`, `deliver` take keyword-only `from_user`. An adopted message is not re-posted, so it is not re-stamped.
+- `fake_orchestrator`: messages record `from_user`; a non-bool value answers 422 `invalid_request`.
+
 ## v0.14.0
 
 Session readiness. Needs an agents-orchestrator whose SessionView has `summary` (any current one). No breaking change.

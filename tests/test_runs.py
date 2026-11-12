@@ -551,3 +551,39 @@ async def test_adopted_message_does_not_repost_attachments(fake, client, store, 
     assert out.message_id is not None
     assert not fake.attachments
     assert len(posts(fake)) == 1
+
+
+async def test_dispatch_threads_from_user(fake, client, store, run):
+    out = await dispatch(client, store, run, "hi", MARK, from_user=True)
+    assert fake.messages[int(out.message_id)]["from_user"] is True
+
+
+async def test_dispatch_without_from_user_sends_no_flag(fake, client, store, run):
+    out = await dispatch(client, store, run, "hi", MARK)
+    assert fake.messages[int(out.message_id)]["from_user"] is None
+
+
+async def test_post_update_threads_from_user(fake, client, store, parent):
+    upd = _update_run(store, parent)
+    out = await post_update(client, store, upd, parent.session_id, "c", UPDATE_MARK, from_user=True)
+    assert fake.messages[int(out.message_id)]["from_user"] is True
+
+
+async def test_deliver_threads_from_user(fake, client, store, run):
+    from agents_common.runs import deliver
+
+    session = await client.create_session(run.preset_id, "dl")
+    out = await deliver(client, store, run, str(session.id), "see", MARK, from_user=True)
+    assert out is not None
+    assert fake.messages[int(out.message_id)]["from_user"] is True
+
+
+async def test_adopted_message_is_not_reposted_with_from_user(fake, client, store, run):
+    with pytest.raises(Crash):
+        await dispatch(CrashingClient(client, "post_message"), store, run, "x", MARK)
+    n_posts = len(posts(fake))
+
+    await dispatch(client, store, store.ref(run), "x", MARK, from_user=True)
+
+    assert len(posts(fake)) == n_posts
+    assert next(iter(fake.messages.values()))["from_user"] is None

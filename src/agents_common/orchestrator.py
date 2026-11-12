@@ -317,8 +317,12 @@ class OrchestratorClient:
         session_id: uuid.UUID | str,
         text: str,
         attachments: Sequence[Attachment] | None = None,
+        *,
+        from_user: bool | None = None,
     ) -> Message:
         body: dict[str, Any] = {"text": text}
+        if from_user is not None:
+            body["from_user"] = from_user
         if attachments:
             body["attachments"] = [a.to_json() for a in attachments]
         data = await self._request("POST", f"/api/v1/sessions/{session_id}/messages", body)

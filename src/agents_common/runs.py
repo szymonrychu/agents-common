@@ -68,6 +68,8 @@ async def dispatch(
     text: str,
     marker: str,
     attachments: Sequence[Attachment] | None = None,
+    *,
+    from_user: bool | None = None,
 ) -> RunRef:
     """Create the run's session and post its prompt, each step at most once.
 
@@ -86,7 +88,9 @@ async def dispatch(
         session_id = str(session.id)
         await store.set_session(run.id, session_id)
         run = dataclasses.replace(run, session_id=session_id)
-    return await _post_once(client, store, run, session_id, text, marker, attachments)
+    return await _post_once(
+        client, store, run, session_id, text, marker, attachments, from_user=from_user
+    )
 
 
 async def post_update(
@@ -97,12 +101,16 @@ async def post_update(
     text: str,
     marker: str,
     attachments: Sequence[Attachment] | None = None,
+    *,
+    from_user: bool | None = None,
 ) -> RunRef:
     """Post `text` to an existing session with the same adopt-before-post rule."""
     if run.session_id is None:
         await store.set_session(run.id, session_id)
         run = dataclasses.replace(run, session_id=session_id)
-    return await _post_once(client, store, run, session_id, text, marker, attachments)
+    return await _post_once(
+        client, store, run, session_id, text, marker, attachments, from_user=from_user
+    )
 
 
 async def running_session(client: OrchestratorClient, session_id: str) -> Session | None:
@@ -125,6 +133,8 @@ async def deliver(
     text: str,
     marker: str,
     attachments: Sequence[Attachment] | None = None,
+    *,
+    from_user: bool | None = None,
 ) -> RunRef | None:
     """Like `post_update`, but a gone session returns None and leaves the run open.
 
@@ -136,7 +146,15 @@ async def deliver(
         run = dataclasses.replace(run, session_id=session_id)
     try:
         return await _post_once(
-            client, store, run, session_id, text, marker, attachments, fail_run=False
+            client,
+            store,
+            run,
+            session_id,
+            text,
+            marker,
+            attachments,
+            fail_run=False,
+            from_user=from_user,
         )
     except NotFound:
         return None
@@ -156,6 +174,7 @@ async def _post_once(
     attachments: Sequence[Attachment] | None = None,
     *,
     fail_run: bool = True,
+    from_user: bool | None = None,
 ) -> RunRef:
     if run.message_id is not None:
         return run
@@ -163,7 +182,7 @@ async def _post_once(
         existing = await client.list_messages(session_id)
         adopted = next((m for m in existing if m.text and marker in m.text), None)
         message = adopted or await client.post_message(
-            session_id, f"{text}\n\n{marker}", attachments=attachments
+            session_id, f"{text}\n\n{marker}", attachments=attachments, from_user=from_user
         )
     except NotFound:
         if fail_run:
