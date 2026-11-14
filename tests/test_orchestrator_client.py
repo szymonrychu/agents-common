@@ -703,3 +703,20 @@ async def test_fake_rejects_non_bool_from_user(fake):
         )
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "invalid_request"
+
+
+def test_session_parses_close_requested_at():
+    base = {"id": str(uuid.uuid4()), "slug": "s"}
+    session = Session.model_validate({**base, "close_requested_at": "2026-11-14T06:30:00Z"})
+    assert session.close_requested_at == datetime(2026, 11, 14, 6, 30, tzinfo=UTC)
+    assert session.close_requested_at.tzinfo is not None
+    assert Session.model_validate(base).close_requested_at is None
+
+
+async def test_fake_request_close_sets_close_requested_at(fake):
+    preset = fake.add_preset("p")
+    async with make_client(fake) as client:
+        session = await client.create_session(preset.id, "s-close")
+        assert session.close_requested_at is None
+        fake.request_close(str(session.id))
+        assert (await client.get_session(session.id)).close_requested_at is not None

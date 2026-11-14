@@ -16,6 +16,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from agents_common.orchestrator import (
     Attachment,
+    Message,
     NotFound,
     OrchestratorClient,
     OrchestratorError,
@@ -24,6 +25,7 @@ from agents_common.orchestrator import (
 
 RunStatus = Literal["handled", "failed"]
 RunId = int | str
+RESULT_TEXT_MAX = 8000
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,48 @@ async def running_session(client: OrchestratorClient, session_id: str) -> Sessio
     except NotFound:
         return None
     return session if session.desired == "active" else None
+
+
+async def session_finished(client: OrchestratorClient, session_id: str) -> bool:
+    """True when the session is gone, asked to close or is no longer desired `active`.
+
+    OrchestratorUnavailable and other OrchestratorError propagate (the caller retries).
+    """
+    try:
+        session = await client.get_session(session_id)
+    except NotFound:
+        return True
+    return session.close_requested_at is not None or session.desired != "active"
+
+
+def result_text(message: Message | None) -> str | None:
+    """The final text of a completed turn, capped at RESULT_TEXT_MAX characters; else None."""
+    if message is None or message.turn is None or message.turn.status != "completed":
+        return None
+    if message.turn.final_text is None:
+        return None
+    return message.turn.final_text[:RESULT_TEXT_MAX]
+
+
+class RecordingClient(OrchestratorClient):
+    """The client of `inner`, remembering the last message `get_message` returned in `message`.
+
+    Every other call goes to `inner` unchanged.
+    """
+
+    def __init__(self, inner: OrchestratorClient) -> None:
+        self._inner = inner
+        self.message: Message | None = None
+
+    async def get_message(self, message_id: int) -> Message:
+        message = await self._inner.get_message(message_id)
+        self.message = message
+        return message
+
+    def __getattribute__(self, name: str):
+        if name.startswith("_") or name in ("message", "get_message"):
+            return object.__getattribute__(self, name)
+        return getattr(object.__getattribute__(self, "_inner"), name)
 
 
 async def deliver(

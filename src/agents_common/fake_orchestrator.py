@@ -146,6 +146,10 @@ class FakeOrchestrator:
             if msg["session_id"] == str(session_id) and msg["status"] == "queued":
                 msg["status"] = "cancelled"
 
+    def request_close(self, session_id: str) -> None:
+        """The session asked to close (self-close): `close_requested_at` is set to now."""
+        self.sessions[str(session_id)]["close_requested_at"] = _now()
+
     def remove_session(self, session_id: str) -> None:
         """The session row is gone: it and its messages answer 404."""
         sid = str(session_id)
@@ -272,6 +276,7 @@ class FakeOrchestrator:
             "preset_name": self.presets[preset_id]["name"],
             "project": project,
             "desired": "active",
+            "close_requested_at": None,
             "summary": {"ready": 0, "start_state": "booting", "ready_with_session": 0},
             "created_at": _now(),
         }
