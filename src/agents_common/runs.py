@@ -72,8 +72,11 @@ async def dispatch(
     attachments: Sequence[Attachment] | None = None,
     *,
     from_user: bool | None = None,
+    project: str | None = None,
 ) -> RunRef:
     """Create the run's session and post its prompt, each step at most once.
+
+    `project` places the session in that project; None keeps the preset's project.
 
     A missing preset or session finishes the run failed (`preset_not_found`,
     `session_not_found`) and re-raises the NotFound; other agents-orchestrator errors propagate,
@@ -83,7 +86,7 @@ async def dispatch(
     session_id = run.session_id
     if session_id is None:
         try:
-            session = await client.create_session(run.preset_id, run.slug)
+            session = await client.create_session(run.preset_id, run.slug, project=project)
         except NotFound:
             await store.finish(run.id, "failed", "preset_not_found")
             raise
