@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.18.0
+
+Session project on dispatch (S-51). No breaking change; `project=None` keeps the preset's project.
+
+- `runs`: `dispatch(..., project=None)` passes the project to `create_session`, so a run's session lands in a chosen project; a replay with the same slug and project adopts the existing session.
+
 ## v0.17.0
 
 Trigger chain helpers (S-50, T-325). No breaking change; `close_requested_at` is None against an orchestrator that does not send it.
