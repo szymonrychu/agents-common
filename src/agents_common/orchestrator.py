@@ -119,6 +119,7 @@ class Session(_Model):
     status: dict[str, Any] | None = None
     project: str = "default"
     summary: SessionSummary | None = None
+    close_requested_at: datetime | None = None
 
     @property
     def is_up(self) -> bool:

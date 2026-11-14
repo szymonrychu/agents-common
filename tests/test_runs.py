@@ -17,12 +17,16 @@ from agents_common.orchestrator import (
     UsageQuotaRefused,
 )
 from agents_common.runs import (
+    RESULT_TEXT_MAX,
     PresetBinding,
+    RecordingClient,
     RunRef,
     RunStore,
     dispatch,
     marker,
     post_update,
+    result_text,
+    session_finished,
     track,
 )
 
@@ -587,3 +591,63 @@ async def test_adopted_message_is_not_reposted_with_from_user(fake, client, stor
 
     assert len(posts(fake)) == n_posts
     assert next(iter(fake.messages.values()))["from_user"] is None
+
+
+async def _new_session(fake, client, slug="s-fin"):
+    preset = fake.add_preset("p")
+    return str((await client.create_session(preset.id, slug)).id)
+
+
+async def test_session_finished_false_while_active(fake, client):
+    sid = await _new_session(fake, client)
+    assert await session_finished(client, sid) is False
+
+
+async def test_session_finished_on_close_requested(fake, client):
+    sid = await _new_session(fake, client)
+    fake.request_close(sid)
+    assert await session_finished(client, sid) is True
+
+
+async def test_session_finished_on_deleting(fake, client):
+    sid = await _new_session(fake, client)
+    fake.discard_session(sid)
+    assert await session_finished(client, sid) is True
+
+
+async def test_session_finished_on_not_found(fake, client):
+    sid = await _new_session(fake, client)
+    fake.remove_session(sid)
+    assert await session_finished(client, sid) is True
+
+
+async def test_session_finished_propagates_unavailable(fake, client):
+    sid = await _new_session(fake, client)
+    fake.fail_next("get_session", 503)
+    with pytest.raises(OrchestratorUnavailable):
+        await session_finished(client, sid)
+
+
+async def test_result_text_caps_at_8000(fake, client):
+    sid = await _new_session(fake, client, "s-res")
+    posted = await client.post_message(sid, "hi")
+    assert RESULT_TEXT_MAX == 8000
+    assert result_text(await client.get_message(posted.id)) is None
+    fake.complete_turn(posted.id, "x" * 9000)
+    text = result_text(await client.get_message(posted.id))
+    assert text == "x" * 8000
+    fake.complete_turn(posted.id, "short")
+    assert result_text(await client.get_message(posted.id)) == "short"
+    assert result_text(None) is None
+
+
+async def test_recording_client_keeps_last_message(fake, client):
+    sid = await _new_session(fake, client, "s-rec")
+    posted = await client.post_message(sid, "hi")
+    recording = RecordingClient(client)
+    assert recording.message is None
+    fake.complete_turn(posted.id, "done")
+    got = await recording.get_message(posted.id)
+    assert recording.message is got
+    assert result_text(recording.message) == "done"
+    assert (await recording.get_session(sid)).slug == "s-rec"

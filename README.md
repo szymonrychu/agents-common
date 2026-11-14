@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.16.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.17.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.16.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.17.0`.
 
 ## `settings`
 
@@ -112,7 +112,8 @@ and create nothing),
 
 ## `runs`
 
-Public names: `dispatch`, `post_update`, `running_session`, `deliver`, `track_delivery`,
+Public names: `dispatch`, `post_update`, `running_session`, `session_finished`, `result_text`,
+`RESULT_TEXT_MAX`, `RecordingClient`, `deliver`, `track_delivery`,
 `track`, `marker`, `RunRef` (`session_id`), `RunStore` (`set_session`, `set_message`,
 `finish`), `PresetBinding`, `RunStatus`, `RunId`. A missing preset fails the run with
 `preset_not_found`, a missing session with `session_not_found`.

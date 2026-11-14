@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.17.0
+
+Trigger chain helpers (S-50, T-325). No breaking change; `close_requested_at` is None against an orchestrator that does not send it.
+
+- `orchestrator`: `Session.close_requested_at` (datetime or None).
+- `runs`: `session_finished(client, session_id)` (gone, close requested or not `active`; unavailable propagates), `RESULT_TEXT_MAX` (8000), `result_text(message)` (completed turn final text, capped) and `RecordingClient` (keeps the last message read by `get_message`).
+- `fake_orchestrator`: `request_close(session_id)`; created sessions carry `close_requested_at` None.
+
 ## v0.16.0
 
 Session readiness needs a wrapper session (T-167). Needs agents-orchestrator with the summary field `ready_with_session` (PR #125); against an older one `is_up` is always false. Behaviour change in `Session.is_up` only.
