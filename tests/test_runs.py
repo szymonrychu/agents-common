@@ -179,6 +179,36 @@ async def test_dispatch_happy_path(fake, client, store, run):
     assert store.rows[1]["reason"] is None
 
 
+async def test_dispatch_creates_session_in_given_project(fake, client, store):
+    fake.add_project("alpha", "Alpha")
+    preset = fake.add_preset("p", project="default")
+    ref = RunRef(
+        id=1, slug="wh-1", preset_id=str(preset.id), session_id=None, message_id=None, started_at=T0
+    )
+    store.add(ref)
+    out = await dispatch(client, store, ref, "x", MARK, project="alpha")
+    assert (await client.get_session(out.session_id)).project == "alpha"
+
+
+async def test_dispatch_without_project_uses_preset_project(fake, client, store, run):
+    out = await dispatch(client, store, run, "x", MARK)
+    assert (await client.get_session(out.session_id)).project == "default"
+
+
+async def test_dispatch_project_replay_adopts_same_slug(fake, client, store):
+    fake.add_project("alpha", "Alpha")
+    preset = fake.add_preset("p", project="default")
+    ref = RunRef(
+        id=1, slug="wh-1", preset_id=str(preset.id), session_id=None, message_id=None, started_at=T0
+    )
+    store.add(ref)
+    first = await dispatch(client, store, ref, "x", MARK, project="alpha")
+    fresh = dataclasses.replace(ref, session_id=None, message_id=None)
+    again = await dispatch(client, store, fresh, "x", MARK, project="alpha")
+    assert again.session_id == first.session_id
+    assert len(fake.sessions) == 1
+
+
 async def test_dispatch_again_is_a_noop_when_both_ids_are_stored(fake, client, store, run):
     out = await dispatch(client, store, run, "x", MARK)
     n = len(fake.requests)
