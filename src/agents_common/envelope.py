@@ -34,9 +34,9 @@ class TagSpec:
     attrs: Mapping[str, Validator]
     required: frozenset[str] = frozenset()
     body_max: int | None = None
+    # A non-self-closing body must be non-empty unless the attribute named here is present.
     body_required_unless: str | None = None
-    # A non-self-closing body must be non-empty unless the attribute named by
-    # body_required_unless is present. Set False for tags whose body may always be empty.
+    # Set False for tags whose body may always be empty.
     body_required: bool = True
 
 
@@ -81,8 +81,12 @@ def unescape(value: str) -> str:
 
 
 def _snippet(text: str, pos: int) -> str:
-    line = text[pos : pos + SNIPPET_MAX].split("\n", 1)[0].rstrip("\r")
-    return line
+    """The opening tag only: up to its first `>` (or the line end if unclosed), capped."""
+    line = text[pos:].split("\n", 1)[0].rstrip("\r")
+    gt = line.find(">")
+    if gt != -1:
+        line = line[: gt + 1]
+    return line[:SNIPPET_MAX]
 
 
 def parse(text: str, registry: Registry) -> Parsed:
@@ -128,12 +132,12 @@ def parse(text: str, registry: Registry) -> Parsed:
             continue
         index += 1
         snippet = _snippet(text, start)
-        attrs_raw, tag_end, self_close, err = _read_open_tag(text, om.end())
+        attrs_raw, dups, tag_end, self_close, err = _read_open_tag(text, om.end())
         if err is not None or attrs_raw is None:
             errors.append(EnvelopeError(index, snippet, err or "malformed opening tag"))
             pos = line_end
             continue
-        problems = _check_attrs(spec, attrs_raw)
+        problems = _check_attrs(spec, attrs_raw, dups)
         body: str | None = None
         resume = tag_end
         if spec.self_closing:
@@ -164,8 +168,13 @@ def parse(text: str, registry: Registry) -> Parsed:
     return Parsed(tuple(envelopes), tuple(errors))
 
 
-def _read_open_tag(text: str, pos: int) -> tuple[dict[str, str] | None, int, bool, str | None]:
-    """Read attributes and the tag end from `pos`. Returns (attrs, end, self_close, error)."""
+def _read_open_tag(
+    text: str, pos: int
+) -> tuple[dict[str, str] | None, list[str], int, bool, str | None]:
+    """Read attributes and the tag end from `pos`.
+
+    Returns (attrs, duplicate names, end, self_close, error).
+    """
     attrs: dict[str, str] = {}
     dups: list[str] = []
     while True:
@@ -179,19 +188,12 @@ def _read_open_tag(text: str, pos: int) -> tuple[dict[str, str] | None, int, boo
         pos = am.end()
     em = _END_RE.match(text, pos)
     if em is None:
-        return None, pos, False, 'malformed opening tag (attributes must be name="value")'
-    if dups:
-        # Surface through attrs check: mark duplicates with a sentinel key.
-        attrs["\0dup"] = ",".join(dups)
-    return attrs, em.end(), em.group(1) == "/", None
+        return None, dups, pos, False, 'malformed opening tag (attributes must be name="value")'
+    return attrs, dups, em.end(), em.group(1) == "/", None
 
 
-def _check_attrs(spec: TagSpec, attrs: dict[str, str]) -> list[str]:
-    problems: list[str] = []
-    dups = attrs.pop("\0dup", None)
-    if dups:
-        for d in dups.split(","):
-            problems.append(f"duplicate attribute {d}")
+def _check_attrs(spec: TagSpec, attrs: dict[str, str], dups: list[str]) -> list[str]:
+    problems: list[str] = [f"duplicate attribute {d}" for d in dups]
     for key, value in attrs.items():
         validator = spec.attrs.get(key)
         if validator is None:

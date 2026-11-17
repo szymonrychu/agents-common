@@ -178,3 +178,65 @@ def test_registry_is_generic():
     )
     p = parse('<x-a to="q">b</x-a>\n<x-b>', reg)
     assert p.envelopes[0].tag == "x-a" and len(p.errors) == 1
+
+
+def test_body_required_false_accepts_empty_body():
+    from agents_common.envelope import Registry, TagSpec
+
+    reg = Registry(
+        tags={"x-a": TagSpec("x-a", False, {}, body_required=False)},
+        families=("x-",),
+    )
+    p = parse("<x-a></x-a>", reg)
+    assert p.errors == ()
+    assert p.envelopes[0].body == ""
+
+
+def test_shorter_closing_fence_does_not_close():
+    p = one("````\n```\n<chat-send>a</chat-send>\n")
+    assert p.envelopes == () and p.errors == ()
+
+
+def test_longer_closing_fence_closes():
+    p = one("```\n<chat-send>a</chat-send>\n`````\n<chat-send>b</chat-send>")
+    assert [e.body for e in p.envelopes] == ["b"]
+
+
+def test_backtick_fence_with_backtick_in_info_is_not_a_fence():
+    p = one("``` a`b\n<chat-send>a</chat-send>")
+    assert [e.body for e in p.envelopes] == ["a"]
+
+
+def test_closing_fence_with_info_string_does_not_close():
+    p = one("```\n``` js\n<chat-send>a</chat-send>\n")
+    assert p.envelopes == ()
+
+
+def test_entities_stay_literal_in_body():
+    p = one("<chat-send>a &amp; b &lt; c</chat-send>")
+    assert p.envelopes[0].body == "a &amp; b &lt; c"
+
+
+def test_crlf_body_trimmed_like_lf():
+    p = one("<chat-send>\r\nhello\r\nworld\r\n</chat-send>")
+    assert p.errors == ()
+    assert p.envelopes[0].body == "hello\r\nworld"
+
+
+def test_snippet_is_opening_tag_only():
+    p = one("<chat-send room=oops>secret body</chat-send>")
+    assert p.errors[0].snippet == "<chat-send room=oops>"
+    p = one('<chat-send bogus="1">secret body</chat-send>')
+    assert p.errors[0].snippet == '<chat-send bogus="1">'
+    p = one("<chat-send/>")
+    assert p.errors[0].snippet == "<chat-send/>"
+
+
+def test_snippet_unclosed_tag_is_line_and_capped():
+    p = one("<chat-send room=" + "x" * 200 + "\nmore")
+    assert p.errors[0].snippet == ("<chat-send room=" + "x" * 200)[:80]
+
+
+def test_duplicate_attribute_reported():
+    p = one('<chat-send room="a" room="b">x</chat-send>')
+    assert "duplicate attribute room" in p.errors[0].message
