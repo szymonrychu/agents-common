@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.19.0
+
+Envelope parser (S-70, T-559). New module, no breaking change.
+
+- `envelope`: registry-driven parser `parse(text, registry) -> Parsed(envelopes, errors)` for line-start tag envelopes outside code fences; `CHAT_TAGS` registers `chat-send` and `chat-react`.
+
 ## v0.18.0
 
 Session project on dispatch (S-51). No breaking change; `project=None` keeps the preset's project.

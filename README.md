@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.18.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.19.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.18.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.19.0`.
 
 ## `settings`
 
@@ -196,6 +196,24 @@ label is a descriptive tag and never decides (inputs are already normalised).
     labels_match(normalize_labels(["Project:X"]), ["project:x"])  # True
     labels_match(["admin", "github"], ["project:x"])  # True: tags never restrict
     labels_match(["admin", "project:y"], ["project:x"])  # False
+
+## `envelope`
+
+Public names: `parse`, `Parsed`, `Envelope`, `EnvelopeError`, `Registry`, `TagSpec`, `Validator`,
+`CHAT_TAGS`, `unescape`, `message_id`, `room`, `files`, `react_key`, `FILES_MAX`, `SNIPPET_MAX`.
+Pure stdlib parser for tag envelopes in agent text. A tag counts only at a line start (leading
+spaces or tabs allowed) outside ``` and ~~~ fences. A `Registry` maps tag names to a `TagSpec`
+(attribute validators, required attributes, body cap, self-closing) and lists family prefixes: an
+unregistered line-start tag of a family (for example `<chat-status>`) is an error. Attributes are
+double-quoted and unescape only `&amp; &lt; &gt; &quot; &apos;`; a body is raw text up to the first
+closing tag. `index` numbers every recognised opening tag, valid or not, from 1. `CHAT_TAGS`:
+`chat-send` (attrs `room`, `reply_to`, `files`; body at most 20000 chars, empty only with `files`)
+and `chat-react` (self-closing, `to` and `key` required).
+
+    from agents_common.envelope import CHAT_TAGS, parse
+
+    parsed = parse('<chat-send room="r">hi</chat-send>', CHAT_TAGS)
+    parsed.envelopes[0].body  # "hi"
 
 ## Versioning
 
