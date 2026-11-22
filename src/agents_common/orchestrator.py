@@ -256,16 +256,26 @@ class OrchestratorClient:
         return Preset.model_validate(await self._request("GET", f"/api/v1/presets/{preset_id}"))
 
     async def create_session(
-        self, preset_id: uuid.UUID | str, slug: str, *, project: str | None = None
+        self,
+        preset_id: uuid.UUID | str,
+        slug: str,
+        *,
+        project: str | None = None,
+        overrides: dict[str, Any] | None = None,
     ) -> Session:
         """Create a session from a preset; idempotent on slug (409 adopts the existing one).
 
         `project` places the session in that project (default: the preset's project). A 409
         `conflict` adopts the session of that slug only when it is in the requested project
-        (any project when `project` is None); otherwise the conflict is re-raised."""
+        (any project when `project` is None); otherwise the conflict is re-raised.
+
+        `overrides` (keys `replicas`, `start_prompt`) is sent as the body's `overrides` object;
+        None leaves the body unchanged."""
         body: dict[str, Any] = {"preset_id": str(preset_id), "slug": slug}
         if project is not None:
             body["project"] = project
+        if overrides is not None:
+            body["overrides"] = overrides
         try:
             data = await self._request("POST", "/api/v1/sessions", body)
         except OrchestratorError as exc:

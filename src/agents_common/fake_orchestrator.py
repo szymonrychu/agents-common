@@ -277,6 +277,8 @@ class FakeOrchestrator:
             "project": project,
             "desired": "active",
             "close_requested_at": None,
+            "replicas": (body.get("overrides") or {}).get("replicas"),
+            "start_prompt": (body.get("overrides") or {}).get("start_prompt"),
             "summary": {"ready": 0, "start_state": "booting", "ready_with_session": 0},
             "created_at": _now(),
         }

@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -720,3 +721,23 @@ async def test_fake_request_close_sets_close_requested_at(fake):
         assert session.close_requested_at is None
         fake.request_close(str(session.id))
         assert (await client.get_session(session.id)).close_requested_at is not None
+
+
+@pytest.mark.parametrize(
+    "overrides", [None, {"replicas": 1, "start_prompt": "dream"}], ids=["none", "given"]
+)
+async def test_create_session_sends_overrides(fake, overrides):
+    preset = fake.add_preset("p")
+    seen: list[dict] = []
+    inner = httpx.ASGITransport(app=fake.app)
+
+    class Spy(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                seen.append(json.loads(request.content))
+            return await inner.handle_async_request(request)
+
+    async with OrchestratorClient("http://orch", TOKEN, transport=Spy()) as client:
+        await client.create_session(preset.id, "o-1", overrides=overrides)
+    assert ("overrides" in seen[0]) is (overrides is not None)
+    assert seen[0].get("overrides") == overrides
