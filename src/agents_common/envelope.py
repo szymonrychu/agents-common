@@ -296,3 +296,117 @@ CHAT_TAGS = Registry(
     },
     families=("chat-",),
 )
+
+
+# ---- hive tags ------------------------------------------------------------------------------
+
+_SLUG_RE = re.compile(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?")
+_POST_ID_RE = re.compile(r"p?([0-9]+)")
+SLUG_LIST_MAX = 20
+INT_LIST_MAX = 50
+
+
+def slug(value: str) -> str | None:
+    """A DNS-1123 label, at most 63 chars."""
+    if len(value) > 63:
+        return "at most 63 chars"
+    if not _SLUG_RE.fullmatch(value):
+        return "must be a DNS-1123 label (lowercase letters, digits, '-')"
+    return None
+
+
+def slug_list(value: str) -> str | None:
+    items = value.split(",")
+    if len(items) > SLUG_LIST_MAX:
+        return f"at most {SLUG_LIST_MAX} slugs"
+    for item in items:
+        msg = slug(item.strip())
+        if msg:
+            return f"{item.strip()!r}: {msg}"
+    return None
+
+
+def post_id(value: str) -> str | None:
+    """`p<digits>` or `<digits>`, at least 1."""
+    m = _POST_ID_RE.fullmatch(value)
+    if m is None or int(m.group(1)) < 1:
+        return "must be a post id p<digits> or <digits>, at least 1"
+    return None
+
+
+def pod_or_leader(value: str) -> str | None:
+    return None if value == "leader" else slug(value)
+
+
+def int_list(value: str) -> str | None:
+    items = value.split(",")
+    if len(items) > INT_LIST_MAX:
+        return f"at most {INT_LIST_MAX} ints"
+    for item in items:
+        item = item.strip()
+        if not item.isascii() or not item.isdigit() or int(item) < 1:
+            return f"{item!r}: must be a positive integer"
+    return None
+
+
+def lane_session(value: str) -> str | None:
+    if value == "priority":
+        return "priority is not allowed across sessions"
+    if value not in ("regular", "idle"):
+        return "must be regular or idle"
+    return None
+
+
+def lane_agent(value: str) -> str | None:
+    if value not in ("regular", "idle", "priority"):
+        return "must be regular, idle or priority"
+    return None
+
+
+def notify_idle(value: str) -> str | None:
+    return None if value == "idle" else "only 'idle' is supported"
+
+
+HIVE_TAGS = Registry(
+    tags={
+        "session-send": TagSpec(
+            name="session-send",
+            self_closing=False,
+            attrs={"to": slug, "handled": int_list, "lane": lane_session},
+            required=frozenset({"to"}),
+            body_max=16000,
+        ),
+        "agent-send": TagSpec(
+            name="agent-send",
+            self_closing=False,
+            attrs={"to": pod_or_leader, "lane": lane_agent, "notify": notify_idle},
+            required=frozenset({"to"}),
+            body_max=60000,
+        ),
+        "project-post": TagSpec(
+            name="project-post",
+            self_closing=False,
+            attrs={
+                "to": slug_list,
+                "reply_to": post_id,
+                "handled": int_list,
+                "project": slug,
+            },
+            body_max=4000,
+        ),
+    },
+    families=("session-", "agent-", "project-"),
+)
+
+
+def merge_registries(*registries: Registry) -> Registry:
+    """Union of tags and families; a duplicate tag name is a ValueError."""
+    tags: dict[str, TagSpec] = {}
+    families: list[str] = []
+    for reg in registries:
+        for name, spec in reg.tags.items():
+            if name in tags:
+                raise ValueError(f"duplicate tag {name}")
+            tags[name] = spec
+        families.extend(f for f in reg.families if f not in families)
+    return Registry(tags=tags, families=tuple(families))

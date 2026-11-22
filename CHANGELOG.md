@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.20.0
+
+Hive envelope tags and frame builders (S-71, T-652). New module, no breaking change.
+
+- `envelope`: `HIVE_TAGS` registers `session-send`, `agent-send` and `project-post`; validators `slug`, `slug_list`, `post_id`, `pod_or_leader`, `int_list`, `lane_session`, `lane_agent`, `notify_idle`; `merge_registries(*registries)` unions tags and families (duplicate tag is a ValueError).
+- `frames`: `escape_body`, `escape_attr`, `message_in(...)` and `notice(...)` build the `<message-in>` frames.
+
 ## v0.19.0
 
 Envelope parser (S-70, T-559). New module, no breaking change.
