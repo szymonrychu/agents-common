@@ -681,3 +681,22 @@ async def test_recording_client_keeps_last_message(fake, client):
     assert recording.message is got
     assert result_text(recording.message) == "done"
     assert (await recording.get_session(sid)).slug == "s-rec"
+
+
+async def test_binding_overrides_reach_create(fake, client, store):
+    preset = fake.add_preset("p", project="default")
+    binding = PresetBinding(
+        preset_id=str(preset.id), overrides={"replicas": 1, "start_prompt": "dream on"}
+    )
+    ref = RunRef(
+        id=1,
+        slug="dr-1",
+        preset_id=binding.preset_id,
+        session_id=None,
+        message_id=None,
+        started_at=T0,
+    )
+    store.add(ref)
+    out = await dispatch(client, store, ref, "x", MARK, overrides=binding.overrides)
+    session = fake.sessions[out.session_id]
+    assert (session["replicas"], session["start_prompt"]) == (1, "dream on")

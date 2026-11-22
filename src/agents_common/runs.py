@@ -12,7 +12,7 @@ import dataclasses
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from agents_common.orchestrator import (
     Attachment,
@@ -34,6 +34,7 @@ class PresetBinding:
 
     preset_id: str
     prompt_template: str | None = None
+    overrides: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -73,10 +74,12 @@ async def dispatch(
     *,
     from_user: bool | None = None,
     project: str | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> RunRef:
     """Create the run's session and post its prompt, each step at most once.
 
     `project` places the session in that project; None keeps the preset's project.
+    `overrides` (a `PresetBinding.overrides`) is passed to `create_session`.
 
     A missing preset or session finishes the run failed (`preset_not_found`,
     `session_not_found`) and re-raises the NotFound; other agents-orchestrator errors propagate,
@@ -86,7 +89,9 @@ async def dispatch(
     session_id = run.session_id
     if session_id is None:
         try:
-            session = await client.create_session(run.preset_id, run.slug, project=project)
+            session = await client.create_session(
+                run.preset_id, run.slug, project=project, overrides=overrides
+            )
         except NotFound:
             await store.finish(run.id, "failed", "preset_not_found")
             raise

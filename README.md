@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.20.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.21.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.20.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.21.0`.
 
 ## `settings`
 
@@ -125,6 +125,10 @@ Public names: `dispatch`, `post_update`, `running_session`, `session_finished`, 
 
 `dispatch`, `post_update` and `deliver` take an optional `attachments` list and pass it to
 `post_message`.
+
+`create_session(..., overrides={"replicas": 1, "start_prompt": "..."})` sends the body's `overrides`
+object (omitted when None); `PresetBinding.overrides` carries it and `dispatch(..., overrides=)`
+passes it on. The fake records `replicas` and `start_prompt` on the created session.
 
 `dispatch` lets `UsageQuotaRefused` propagate and finishes nothing: the run stays in progress
 for the caller to hold until `exc.retry_at(now)`.

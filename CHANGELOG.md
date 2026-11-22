@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.21.0
+
+Session overrides on create (S-83, T-670). No breaking change.
+
+- `OrchestratorClient.create_session(..., overrides=None)` sends `overrides` (`replicas`, `start_prompt`) in the body when not None.
+- `PresetBinding.overrides`; `runs.dispatch(..., overrides=None)` passes it to `create_session`.
+- `FakeOrchestrator` records `replicas` and `start_prompt` on the created session.
+
 ## v0.20.0
 
 Hive envelope tags and frame builders (S-71, T-652). New module, no breaking change.
