@@ -240,3 +240,77 @@ def test_snippet_unclosed_tag_is_line_and_capped():
 def test_duplicate_attribute_reported():
     p = one('<chat-send room="a" room="b">x</chat-send>')
     assert "duplicate attribute room" in p.errors[0].message
+
+
+# ---- hive tags ----
+
+from agents_common.envelope import HIVE_TAGS, merge_registries  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '<session-send to="platform" handled="1,2" lane="idle">x</session-send>',
+        '<agent-send to="leader" lane="priority" notify="idle">x</agent-send>',
+        '<agent-send to="hive-2">x</agent-send>',
+        '<project-post to="a,b" reply_to="p12" handled="41" project="proj">x</project-post>',
+        "<project-post>x</project-post>",
+    ],
+)
+def test_hive_tags_valid(text):
+    p = parse(text, HIVE_TAGS)
+    assert p.errors == () and len(p.envelopes) == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "<session-send>x</session-send>",
+        '<session-send to="Bad_Slug">x</session-send>',
+        '<session-send to="' + "a" * 64 + '">x</session-send>',
+        '<session-send to="a" handled="0">x</session-send>',
+        '<session-send to="a" handled="1,x">x</session-send>',
+        '<session-send to="a" handled="' + ",".join(["1"] * 51) + '">x</session-send>',
+        '<session-send to="a" lane="bogus">x</session-send>',
+        '<session-send to="a"></session-send>',
+        '<session-send to="a">' + "x" * 16001 + "</session-send>",
+        '<agent-send to="Leader">x</agent-send>',
+        '<agent-send to="a" lane="bogus">x</agent-send>',
+        '<agent-send to="a" notify="busy">x</agent-send>',
+        '<project-post to="a,B">x</project-post>',
+        '<project-post to="' + ",".join(["a"] * 21) + '">x</project-post>',
+        '<project-post reply_to="p0">x</project-post>',
+        '<project-post reply_to="q3">x</project-post>',
+        "<project-post>" + "x" * 4001 + "</project-post>",
+    ],
+)
+def test_hive_tags_invalid(text):
+    p = parse(text, HIVE_TAGS)
+    assert p.envelopes == () and len(p.errors) == 1
+
+
+def test_priority_across_sessions_error():
+    p = parse('<session-send to="a" lane="priority">x</session-send>', HIVE_TAGS)
+    assert "priority is not allowed across sessions" in p.errors[0].message
+
+
+def test_unknown_hive_tag_is_error():
+    p = parse("<session-foo>x</session-foo>", HIVE_TAGS)
+    assert "session-foo" in p.errors[0].message
+
+
+def test_merged_registry_numbers_across_families():
+    text = (
+        "<chat-send>a</chat-send>\n"
+        '<session-send to="b">b</session-send>\n'
+        '<chat-react to="m1" key="+1"/>\n'
+        "<project-post>c</project-post>\n"
+    )
+    p = parse(text, merge_registries(CHAT_TAGS, HIVE_TAGS))
+    assert p.errors == ()
+    assert [e.index for e in p.envelopes] == [1, 2, 3, 4]
+
+
+def test_merge_registries_rejects_duplicate():
+    with pytest.raises(ValueError):
+        merge_registries(CHAT_TAGS, CHAT_TAGS)

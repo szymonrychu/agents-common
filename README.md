@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.19.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.20.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.19.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.20.0`.
 
 ## `settings`
 
@@ -214,6 +214,27 @@ and `chat-react` (self-closing, `to` and `key` required).
 
     parsed = parse('<chat-send room="r">hi</chat-send>', CHAT_TAGS)
     parsed.envelopes[0].body  # "hi"
+
+`HIVE_TAGS` (families `session-`, `agent-`, `project-`) registers `session-send` (`to` required,
+`handled`, `lane` regular or idle; body at most 16000), `agent-send` (`to` required, a DNS-1123 pod
+name or `leader`; `lane`, `notify="idle"`; body at most 60000) and `project-post` (`to`, `reply_to`,
+`handled`, `project`; body at most 4000); every body is required. `merge_registries(*registries)`
+unions tags and families so one `parse` numbers chat and hive envelopes together; a duplicate tag
+raises `ValueError`.
+
+## `frames`
+
+Public names: `message_in`, `notice`, `escape_body`, `escape_attr`. Pure stdlib builders for the
+`<message-in>` frames sent to agents. `escape_body` escapes `& < >` (newlines kept), `escape_attr`
+also `"`. `message_in(channel, sender, msg_id, body, trailer, **attrs)` renders `channel`, `from`,
+`id`, then the attrs in call order (None skipped; a trailing underscore is dropped, so `for_` is
+`for`), the escaped body, the closing tag and the trailer. `notice(sender, ref, status, reason=None)`
+renders the self-closing `channel="notice"` frame; status is `idle`, `delivered`, `refused` or
+`failed`, else `ValueError`.
+
+    from agents_common.frames import notice
+
+    notice("s-2", "a99", "failed", "hop_limit")
 
 ## Versioning
 
