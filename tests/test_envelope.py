@@ -251,7 +251,7 @@ from agents_common.envelope import HIVE_TAGS, merge_registries  # noqa: E402
     "text",
     [
         '<session-send to="platform" handled="1,2" lane="idle">x</session-send>',
-        '<agent-send to="leader" lane="priority" notify="idle">x</agent-send>',
+        '<agent-send to="leader" lane="interrupt" notify="idle">x</agent-send>',
         '<agent-send to="hive-2">x</agent-send>',
         '<project-post to="a,b" reply_to="p12" handled="41" project="proj">x</project-post>',
         "<project-post>x</project-post>",
@@ -289,9 +289,9 @@ def test_hive_tags_invalid(text):
     assert p.envelopes == () and len(p.errors) == 1
 
 
-def test_priority_across_sessions_error():
-    p = parse('<session-send to="a" lane="priority">x</session-send>', HIVE_TAGS)
-    assert "priority is not allowed across sessions" in p.errors[0].message
+def test_interrupt_across_sessions_error():
+    p = parse('<session-send to="a" lane="interrupt">x</session-send>', HIVE_TAGS)
+    assert "interrupt is not allowed across sessions" in p.errors[0].message
 
 
 def test_unknown_hive_tag_is_error():

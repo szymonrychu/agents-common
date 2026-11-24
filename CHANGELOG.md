@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.22.0
+
+Delivery lanes (T-719). Breaking: lane `priority` is renamed `interrupt`; lanes are regular, idle, interrupt. `interrupt` stays forbidden across sessions.
+
 ## v0.21.0
 
 Session overrides on create (S-83, T-670). No breaking change.
