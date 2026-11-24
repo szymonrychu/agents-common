@@ -350,16 +350,16 @@ def int_list(value: str) -> str | None:
 
 
 def lane_session(value: str) -> str | None:
-    if value == "priority":
-        return "priority is not allowed across sessions"
+    if value == "interrupt":
+        return "interrupt is not allowed across sessions"
     if value not in ("regular", "idle"):
         return "must be regular or idle"
     return None
 
 
 def lane_agent(value: str) -> str | None:
-    if value not in ("regular", "idle", "priority"):
-        return "must be regular, idle or priority"
+    if value not in ("regular", "idle", "interrupt"):
+        return "must be regular, idle or interrupt"
     return None
 
 
