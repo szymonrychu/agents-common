@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.23.0
+
+`next-version` console script (S-99). No breaking change.
+
+- `next_version`: the release version from conventional commits, moved here from the per-repo `scripts/next_version.py` copies; run as `next-version` or `python -m agents_common.next_version`.
+
 ## v0.22.0
 
 Delivery lanes (T-719). Breaking: lane `priority` is renamed `interrupt`; lanes are regular, idle, interrupt. `interrupt` stays forbidden across sessions.

@@ -6,9 +6,9 @@ service stays small.
 
 ## Install
 
-    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.22.0
+    agents-common @ git+https://github.com/szymonrychu/agents-common@v0.23.0
 
-Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.22.0`.
+Test helpers need the extra: `agents-common[testing] @ git+https://github.com/szymonrychu/agents-common@v0.23.0`.
 
 ## `settings`
 
@@ -244,3 +244,7 @@ renders the self-closing `channel="notice"` frame; status is `idle`, `delivered`
 
 Releases are git tags `vMAJOR.MINOR.PATCH`. Tags are never re-pointed: a fix is a new tag.
 Consumers pin a tag in their dependency line.
+
+Release jobs compute the next version with
+`pipx run --spec 'git+https://github.com/szymonrychu/agents-common@v0.23.0' next-version`
+(prints nothing when HEAD is already released).
