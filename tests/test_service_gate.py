@@ -15,6 +15,8 @@ from starlette.testclient import TestClient
 from agents_common import service_gate
 from agents_common.service_gate import ServiceTokenGate, load_tokens
 
+pytestmark = pytest.mark.critical
+
 TOKEN = secrets.token_urlsafe(16)
 OTHER = secrets.token_urlsafe(16)
 PRESENTED = secrets.token_urlsafe(16)

@@ -30,6 +30,8 @@ from agents_common.runs import (
     track,
 )
 
+pytestmark = pytest.mark.critical
+
 TOKEN = "tok-runs"
 T0 = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
 MARK = "<!-- agents-webhook:event:1 -->"

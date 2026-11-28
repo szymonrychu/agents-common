@@ -18,6 +18,8 @@ from agents_common.orchestrator import (
     UsageQuotaRefused,
 )
 
+pytestmark = pytest.mark.critical
+
 TOKEN = "tok-123"
 NOW = datetime(2026, 11, 1, 12, tzinfo=UTC)
 

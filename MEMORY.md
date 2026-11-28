@@ -2,6 +2,13 @@
 
 Lessons that outlive a session. Newest first.
 
+- 2026-11-28: `next_version` lives here (S-99, Q3 C, v0.23.0) so every component releases from one
+  source instead of a copied script. Stdlib only; CI runs
+  `pipx run --spec 'git+https://github.com/szymonrychu/agents-common@v0.23.0' next-version`.
+  Also S-99: markers registered with `--strict-markers`, `critical` lane (`mise run test:critical`),
+  ruff C90/PLR/RET/ERA with a noqa baseline on envelope.parse, fake_orchestrator and runs.track;
+  config/structure tests deleted (nomenclature, package, release, settings tests).
+
 - 2026-11-08: `agents_common.labels` exists so the vault has one owner of the label rules and the
   labels epic has a seam to switch to. It copies the orchestrator rules verbatim; the orchestrator
   and agents-taskboard keep their own copies until that epic. `is_project_label` assumes a project

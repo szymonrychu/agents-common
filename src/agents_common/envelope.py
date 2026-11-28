@@ -89,7 +89,7 @@ def _snippet(text: str, pos: int) -> str:
     return line[:SNIPPET_MAX]
 
 
-def parse(text: str, registry: Registry) -> Parsed:
+def parse(text: str, registry: Registry) -> Parsed:  # noqa: C901, PLR0912, PLR0915
     envelopes: list[Envelope] = []
     errors: list[EnvelopeError] = []
     index = 0

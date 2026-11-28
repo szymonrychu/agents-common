@@ -245,7 +245,7 @@ async def _post_once(
     return dataclasses.replace(run, message_id=message_id)
 
 
-async def track(
+async def track(  # noqa: PLR0911
     client: OrchestratorClient,
     store: RunStore,
     run: RunRef,

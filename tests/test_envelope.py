@@ -4,8 +4,7 @@ from agents_common.envelope import CHAT_TAGS, parse
 
 
 def one(text):
-    p = parse(text, CHAT_TAGS)
-    return p
+    return parse(text, CHAT_TAGS)
 
 
 def test_single_send():
