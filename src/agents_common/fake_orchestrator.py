@@ -251,7 +251,7 @@ class FakeOrchestrator:
             return _error(404, "not_found", "preset not found")
         return JSONResponse(preset)
 
-    async def _sessions(self, request: Request):
+    async def _sessions(self, request: Request):  # noqa: PLR0911
         if request.method == "GET":
             slug = request.query_params.get("slug")
             return JSONResponse([s for s in self.sessions.values() if slug in (None, s["slug"])])
