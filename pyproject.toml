@@ -12,6 +12,9 @@ dependencies = [
     "jinja2>=3.1.6",
 ]
 
+[project.scripts]
+next-version = "agents_common.next_version:main"
+
 [project.optional-dependencies]
 testing = [
     "pytest",
