@@ -17,6 +17,8 @@ from agents_common.db import (
     transition,
 )
 
+pytestmark = pytest.mark.critical
+
 PKG = "sample_pkg"
 
 

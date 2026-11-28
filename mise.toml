@@ -20,3 +20,7 @@ run = "uv run ruff check . && uv run ruff format --check ."
 [tasks.fmt]
 description = "Format and autofix"
 run = "uv run ruff format . && uv run ruff check --fix ."
+
+[tasks."test:critical"]
+description = "Run only the critical tests (fast lane)"
+run = "uv run pytest -m critical"

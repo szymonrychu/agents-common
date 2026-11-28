@@ -41,7 +41,11 @@ def _commit(repo: Path, message: str, tag: str = "") -> str:
 
 def _next(repo: Path) -> str:
     proc = subprocess.run(
-        [sys.executable, "-m", "agents_common.next_version"], cwd=repo, env=ENV, capture_output=True, text=True
+        [sys.executable, "-m", "agents_common.next_version"],
+        cwd=repo,
+        env=ENV,
+        capture_output=True,
+        text=True,
     )
     assert proc.returncode == 0, proc.stderr
     return proc.stdout
@@ -125,4 +129,3 @@ def test_head_contained_in_newer_tag_prints_nothing(tmp_path):
     _commit(repo, "feat: a thing", tag="v1.1.0")
     _git(repo, "checkout", "-q", "--detach", c1)
     assert _next(repo) == ""
-
